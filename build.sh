@@ -9,7 +9,7 @@ cd __build__
 cmake ..
 make -j
 
-cd ..
-rm compile_commands.json
-ln -s __build__/compile_commands.json compile_commands.json 
+# cd ..
+# rm compile_commands.json
+# ln -s __build__/compile_commands.json compile_commands.json 
 
