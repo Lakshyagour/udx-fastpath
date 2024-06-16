@@ -1,6 +1,6 @@
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(CNDP REQUIRED libcndp)
-
+include_directories(${CNDP_INCLUDE_DIRS})
 
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(XDP REQUIRED libxdp>=1.2.0)

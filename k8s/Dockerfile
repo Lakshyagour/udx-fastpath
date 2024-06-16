@@ -30,5 +30,15 @@ WORKDIR /home/cndp
 RUN make
 RUN make install
 
+WORKDIR /home 
+RUN git clone https://github.com/Lakshyagour/udx-fastpath.git
+WORKDIR /home/udx-fastpath
+RUN apt-get -y install cmake libjsoncpp-dev
+WORKDIR /home/cndp
+RUN sed -i 's|^prefix=/usr/local|prefix=/home/cndp/usr/local|' usr/local/lib/pkgconfig/libcndp.pc
+RUN echo "export PKG_CONFIG_PATH=$PKG_CONFIG_PATH:/home/cndp/usr/local/lib/pkgconfig" >> ~/.bashrc
+
+
+
 
 

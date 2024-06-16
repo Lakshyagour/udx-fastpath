@@ -30,7 +30,7 @@
 
 #define FASTPATH_PORT_CONFIGURATION_TAG "fastpath-port-configuration"
 #define FASTPATH_FILTERING_TAG "fastpath-filtering"
-#define FASTPATH_PORTS_TAG "fasthpath-ports"
+#define FASTPATH_PORTS_TAG "fastpath-ports"
 
 #define DPDK_DATAPATH_TAG "dpdk-datapath-params"
 #define CNDP_DATAPATH_TAG "cndp-datapath-params"

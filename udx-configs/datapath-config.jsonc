@@ -19,7 +19,7 @@
         /* If you want Application datapath to only receive packet with dataplane-port then enable it*/
         "fastpath-filtering": true,
         /* The packets with matching ports will be sent to the fast-path all other packet are sent to kernel using TUN device irrespective of packet I/O Choosen */
-        "fasthpath-ports": [
+        "fastpath-ports": [
             2506,
             "10000-10100"
         ]
