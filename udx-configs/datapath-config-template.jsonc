@@ -1,0 +1,126 @@
+{
+    /* 
+   * Datapath information definations
+   * MODEL --  master-worker (mw) | run-to-completion (rtc)
+   * API   -- DPDK, CNDP, AF_PACKET
+   */
+    "API": "DPDK | CNDP | AF_PACKET",
+    "MODEL": "run-to-completion | master-worker",
+    /* Log Level Of Application one of the following DEBUG, INFO, WARN, ERROR */
+    "LOG_LEVEL": "VERBOSE",
+    "workers-configuration": {
+        "worker-cores": [
+            "1-4"
+        ],
+        /* A Lockless FIFO ring is used to transfer ownership of packet pointer from RX-TX cores to Worker Cores. Must be in Power of 2. */
+        "worker-ring-size": 65536
+    },
+    "fastpath-port-configuration": {
+        /* If you want Application datapath to only receive packet with dataplane-port then enable it*/
+        "fastpath-filtering": true,
+        /* The packets with matching ports will be sent to the fast-path all other packet are sent to kernel using TUN device irrespective of packet I/O Choosen */
+        "fasthpath-ports": [
+            2506,
+            "10000-10100"
+        ]
+    },
+    "create-tap-device": true, /* Should be disabled when deploying in cloud*/
+    "tap-device-num-queues": 1, /* This define number of queues the TUN device, should be greater than equal to 1*/
+    "dpdk-datapath-params": {
+        /*EAL parameters -- https://doc.dpdk.org/guides/linux_gsg/linux_eal_parameters.html*/
+        "main-lcore": "main lcore id",
+        "lcore-related-options": "-c <coremask> | -l <corelist> | --lcores <core map> | --main-lcore <core ID> |-s <service core mask>",
+        "memory-related-options": "-n <number of channels> | -r <number of ranks> | -m <megabytes> | --in-memory | --iova-mode <pa|va> | --huge-worker-stack[=size]",
+        "device-related-options": "-b, --block <[domain:]bus:devid.func> | -a, --allow <[domain:]bus:devid.func> | --vdev <device arguments> | --no-pci",
+        "multiprocessing-related-options": "--proc-type <primary|secondary|auto> | --base-virtaddr <address>",
+        "debugging-options": "--no-shconf | --no-huge | --log-level <type:val> | --trace=<regex-match> | --trace-dir=<directory path> | --trace-bufsz=<val> | --trace-mode=<o[verwrite] | d[iscard] >",
+        /* Queue & Mbuf Params [required]*/
+        "queues-and-mbuf-options": {
+            "mp-alloc": "Memory allocation scheme <native|anon|xmem|xmemhuge> [string] [default = native] [optional]",
+            "mbuf-size": "The data size of the mbufs [int] [default = 2172] [optional]",
+            "total-num-mbufs": "Total number of mbufs in the pool [int] [default = 8192] [optional]",
+            "max-pkt-len": "Maximum packet size [int] [default = 1518] [optional]",
+            "burst": "Number of packets per burst [int] [default = 32] [optional]",
+            "num-rx-tx-descriptor": "Number of descriptors in the Rx-TX ring [int] [default = 512] [optional]",
+            "mbcache": "Cache Size of packet buffer memory pools buffers [int] [default = 16] [optional]",
+            "regions": []
+        },
+        /* A logical port is defined by pci_addr there need be total of nb_ports*min(rxq,txq) logical ports */
+        "lports": {
+            "0000:04:00.0": {
+                "rx-tx-queues-info": {
+                    "queue:0": {
+                        "core-id": 0,
+                        "region-index": 0
+                    },
+                    "queue:1": {
+                        "core-id": 1,
+                        "region-index": 0
+                    }
+                },
+                "lport-related-info": "TRIAL"
+            }
+        }
+    },
+    "cndp-datapath-params": {
+        "rss-configuration": {
+            "num-dev-queues-combined": "Number of Combined queues to setup on device [int] [required]",
+            "rss-redirectioins": {
+                /* This is to setup RSS on device as AF_XDP socket are bound to queue, RSS is needed in order to get data to socket [required]*/
+                "ens261f0": {
+                    "rss-start": 0,
+                    "rss-equal": 4
+                },
+                "ens261f1": {
+                    "rss-start": 0,
+                    "rss-equal": 4
+                }
+            }
+        },
+        "main-lcore": "main lcore id",
+        "burst": "Number of packets per burst [int] [default = 32] [optional]",
+        /*[required]*/
+        "umems": {
+            "umem0": {
+                "bufcnt": "Number of pktbufs in UMEM ex-512 [int] [deafult as mention in 'defaults tag'] [required]",
+                "bufsz": "Size of per pktbuf [int] [deafult as mention in 'defaults tag'] [required]",
+                "mtype": "Memory Size of Hugepages to look for [2M|1G] [string] [deafult as mention in 'defaults tag'] [required]",
+                "regions": [
+                    256, /*Number of buffers in a region*/
+                    256
+                ],
+                "rxdesc": "Number of rx descriptors [int] [deafult as mention in [defaults = 16 ] [optional]",
+                "txdesc": "Number of TX descriptors [int] [deafult as mention in [defaults = 16 ] [optional]",
+                "cache": "Cache Size of packet buffer memory pools buffers [int] [deafult = 16 ] [optional]"
+            }
+        },
+        /*[required]*/
+        "lports": {
+            /*the defines a logical port which is equal to dev_name,queueid*/
+            "ens261f0": {
+                "pmd": "PMD Used by framework value=net_af_xdp [required]",
+                "umem": "The Umem region assigned to this logical port [required]",
+                "rx-tx-queues-info": {
+                    "queue:0": {
+                        "queue-id": 0, // Device queue 
+                        "core-id": 0,
+                        "region-index": 0
+                    },
+                    "queue:1": {
+                        "queue-id": 0, // Device queue 
+                        "core-id": 0,
+                        "region-index": 0
+                    }
+                },
+                "busy_poll": "Enable busy polling support true or false [default = true]",
+                "busy_budget": "Busy budget value default 0",
+                "idle_timeout": "If non-zero use value is in milliseconds to detect idle state",
+                "intr_timeout": "Number of milliseconds to wait on interrupt",
+                "skb_mode": "Enable XDP_FLAGS_SKB_MODE when creating af_xdp socket, forces copy mode, default false",
+                "xsk_pin_path": "Path to pinned xsk map for this port",
+                "custom_bpf_prog": "Path to a compiled XDP program",
+                "uds_path": "Path to unix domain socket to get xsk map fd"
+            }
+        }
+    }
+}
