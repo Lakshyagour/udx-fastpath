@@ -24,4 +24,4 @@ include_directories(${UNET_INCLUDE_DIR})
 include_directories(${UTILITY_INCLUDE_DIR}/log ${UTILITY_INCLUDE_DIR}/shm)
 
 add_subdirectory(${CMAKE_SOURCE_DIR}/lib)
-add_subdirectory(${CMAKE_SOURCE_DIR}/src)
+add_subdirectory(${CMAKE_SOURCE_DIR}/app)

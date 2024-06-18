@@ -203,7 +203,7 @@ BreakConstructorInitializersBeforeComma: false
 # ColumnLimit (unsigned)
 # The column limit.
 # A column limit of 0 means that there is no column limit. In this case, clang-format will respect the input’s line breaking decisions within statements unless they contradict other rules.
-ColumnLimit: 100
+ColumnLimit: 0
 
 # CommentPragmas (std::string)
 # A regular expression that describes comments with special meaning, which should not be split into lines or otherwise changed.
@@ -225,7 +225,7 @@ ContinuationIndentWidth: 0
 # If true, format braced lists as best suited for C++11 braced lists.
 # Important differences: - No spaces inside the braced list. - No line break before the closing brace. - Indentation with the continuation indent, not with the block indent.
 # Fundamentally, C++11 braced lists are formatted exactly like function calls would be formatted in their place. If the braced list follows a name (e.g. a type or variable name), clang-format formats as if the {} were the parentheses of a function call with that name. If there is no name, a zero-length name is assumed.
-Cpp11BracedListStyle: false
+Cpp11BracedListStyle: true
 
 # DerivePointerAlignment (bool)
 # If true, analyze the formatted file for the most common alignment of & and \*. PointerAlignment is then used only as fallback.
@@ -268,11 +268,11 @@ DerivePointerBinding: false
 # IndentCaseLabels (bool)
 # Indent case labels one level from the switch statement.
 # When false, use the same indentation level as for the switch statement. Switch statement body is always indented one level more than case labels.
-IndentCaseLabels: false
+IndentCaseLabels: true
 
 # IndentFunctionDeclarationAfterType (bool)
 # If true, indent when breaking function declarations which are not also definitions after the type.
-IndentFunctionDeclarationAfterType: false
+IndentFunctionDeclarationAfterType: true
 
 # IndentWrappedFunctionNames (bool)
 # Indent if a function definition or declaration is wrapped after the type.

@@ -6,6 +6,8 @@
 #include <net/ethernet.h>
 #include <netinet/tcp.h>
 #include <netinet/udp.h>
+
+
 struct packet_info {
   struct hdr_lens;
   struct ethhdr;
@@ -45,7 +47,7 @@ struct hdr_lens {
 #define PFCP_PORT 8805
 
 static uint32_t ptype_l3_ip(uint8_t ipv_ihl) {
-  static uint32_t ptype_l3_ip_proto_map[256] = { 0 };
+  static uint32_t ptype_l3_ip_proto_map[256] = {0};
   ptype_l3_ip_proto_map[0x45]                = PTYPE_L3_IPV4;
   ptype_l3_ip_proto_map[0x46]                = PTYPE_L3_IPV4_EXT;
   ptype_l3_ip_proto_map[0x47]                = PTYPE_L3_IPV4_EXT;
@@ -61,7 +63,7 @@ static uint32_t ptype_l3_ip(uint8_t ipv_ihl) {
 }
 
 static uint32_t ptype_l4(uint8_t proto) {
-  static uint32_t ptype_l4_proto[256] = { 0 };
+  static uint32_t ptype_l4_proto[256] = {0};
   ptype_l4_proto[IPPROTO_UDP]         = PTYPE_L4_UDP;
   ptype_l4_proto[IPPROTO_TCP]         = PTYPE_L4_TCP;
   return ptype_l4_proto[proto];
@@ -70,6 +72,12 @@ static uint32_t ptype_l4(uint8_t proto) {
 static inline uint8_t ipv4_hdr_len(const struct iphdr* ipv4_hdr) {
   return (uint8_t)((ipv4_hdr->ihl & 0x0f) * 4);
 }
+
+
+uint32_t get_packet_type(char *data, struct hdr_lens *hdr_lens);
+uint32_t parse_ethhdr(char *data, struct ethhdr *ethhdr);
+uint32_t parse_iphdr(char *data, struct iphdr *iphdr);
+uint32_t parse_udphdr(char *data, struct udphdr *udphdr);
 
 
 #endif

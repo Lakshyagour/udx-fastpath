@@ -70,3 +70,68 @@ int get_mac_address_sysfs(const char* interface, uint8_t* mac) {
   return 0;
 
 }
+
+void swap_mac_addresses(void* data) {
+  struct ether_header* eth    = (struct ether_header*)data;
+  struct ether_addr* src_addr = (struct ether_addr*)&eth->ether_shost;
+  struct ether_addr* dst_addr = (struct ether_addr*)&eth->ether_dhost;
+  struct ether_addr tmp;
+
+  tmp       = *src_addr;
+  *src_addr = *dst_addr;
+  *dst_addr = tmp;
+}
+
+uint32_t get_packet_type(char *data, struct hdr_lens *hdr_lens)
+{
+    struct ethhdr *ethhdr = (struct ethhdr *)data;
+    uint32_t packet_type = PTYPE_L2_ETHER;
+    uint16_t protocol = 0;
+    uint32_t offset = 0;
+    protocol = ethhdr->h_proto;
+    offset = sizeof(struct ethhdr);
+    hdr_lens->l2_len = offset;
+
+    if (protocol == htobe16(PID_ETH_ARP))
+    {
+        return packet_type = PTYPE_L2_ETHER_ARP;
+    }
+
+    if (protocol == htobe16(PID_ETH_IP))
+    {
+        struct iphdr *iphdr = (struct iphdr *)(data + offset);
+        packet_type = ptype_l3_ip(iphdr->ihl);
+        hdr_lens->l3_len = ipv4_hdr_len(iphdr);
+        offset += hdr_lens->l3_len;
+
+        protocol = iphdr->protocol;
+        packet_type = ptype_l4(protocol);
+    }
+
+    if (packet_type == PTYPE_L4_UDP)
+    {
+        struct udphdr *udphdr = (struct udphdr *)(data + offset);
+        hdr_lens->l4_len = sizeof(struct udphdr);
+        offset += hdr_lens->l4_len;
+        packet_type = PTYPE_L4_UDP;
+
+        if (udphdr->dest == be16toh(GTP_PORT))
+        {
+            packet_type = PTYPE_5G_GTP;
+        }
+        else if (udphdr->dest == be16toh(PFCP_PORT))
+        {
+            packet_type = PTYPE_5G_PFCP;
+        }
+    }
+    else if (packet_type == PTYPE_L4_TCP)
+    {
+        struct tcphdr *tcphdr = (struct tcphdr *)(data + offset);
+        hdr_lens->l4_len = (tcphdr->doff & 0xf0) >> 2;
+        offset += hdr_lens->l4_len;
+        packet_type = PTYPE_L4_TCP;
+    }
+    return packet_type;
+}
+
+

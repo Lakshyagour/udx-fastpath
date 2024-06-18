@@ -11,10 +11,12 @@ using namespace Json;
 #ifndef __CORE_H__
 #define __CORE_H__
 
-#define KERNEL 1000  // Send the packet to kernel using tap device
-#define DEFAULT 2000 // Send the packet to the same interface from which it came
-#define DROP 3000    // Drop the packet and free the packet buffer
-#define NEXT 4000    // Send the packet to next packet processor in the chain.
+#define KERNEL 1000    // Send the packet to kernel using tap device
+#define DEFAULT 2000   // Send the packet to the same interface from which it came
+#define DROP 3000      // Drop the packet and free the packet buffer
+#define BROADCAST 4000 // Send the packet to the all interfaces
+#define NEXT 5000
+
 class CallBackWrapper {
   public:
   virtual uint16_t GetHeadRoom(void*)            = 0;
@@ -74,14 +76,16 @@ class DataPlaneManager {
   int MODEL   = MODEL_VALUE_RUN_TO_COMPLETION;
   Value worker_configuration;
   Value datapath_configuration;
-  Value fastpath_port_configuration;
-  vector<ether_addr> lports_mac;
+
+  bool fast_path_filtering = false;
+  unordered_set<int> fastpath_ports;
 
   int tap_fd         = -1;
   int create_tap     = false;
   int num_queues_tap = 1;
   uint32_t tap_ip_addr;
   uint8_t tap_mac_addr[ETH_ALEN];
+  vector<ether_addr> lport_mac;
 
 
   int validate_cndp_configuration(Value configuration);
@@ -110,6 +114,7 @@ class DataPlaneManager {
 
   bool is_running();
   bool is_started();
+  bool is_fastpath_filtering_enabled();
   int start_datapath_core();
   int reload_datapath_core();
   int stop_datapath_core();

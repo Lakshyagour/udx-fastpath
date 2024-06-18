@@ -20,7 +20,7 @@
         "fastpath-filtering": true,
         /* The packets with matching ports will be sent to the fast-path all other packet are sent to kernel using TUN device irrespective of packet I/O Choosen */
         "fastpath-ports": [
-            2506,
+            2152,
             "10000-10100"
         ]
     },
@@ -62,11 +62,17 @@
     "cndp-datapath-params": {
         /* This should not be used in cloud as CNI will setup the device plugin will setup the ethtool filters*/
         "rss-configuration": {
-            "ens261f1": {
-                "num-dev-queues-combined": 2,
+            "ens261f0": {
+                "num-dev-queues-combined": 1,
                 /* rss-redirectioins This is to setup RSS on device as AF_XDP socket are bound to queue, RSS is needed in order to get data to socket [required]*/
                 "rss-start": 0,
-                "rss-equal": 2
+                "rss-equal": 1
+            },
+            "ens261f1": {
+                "num-dev-queues-combined": 1,
+                /* rss-redirectioins This is to setup RSS on device as AF_XDP socket are bound to queue, RSS is needed in order to get data to socket [required]*/
+                "rss-start": 0,
+                "rss-equal": 1
             }
         },
         "main-lcore": 0,
@@ -89,7 +95,7 @@
         /*[required]*/
         "lports": {
             /*the defines a logical port which is equal to dev_name,queueid*/
-            "ens261f1": {
+            "ens261f0": {
                 "pmd": "net_afxdp",
                 "umem": "umem0",
                 "rx-tx-queues-info": {
@@ -97,9 +103,17 @@
                         "queue-id": 0, // Device queue 
                         "core-id": 0,
                         "region-index": 0
-                    },
-                    "queue:1": {
-                        "queue-id": 1, // Device queue 
+                    }
+                },
+                "busy_poll": true,
+                "busy_budget": 0
+            },
+            "ens261f1": {
+                "pmd": "net_afxdp",
+                "umem": "umem0",
+                "rx-tx-queues-info": {
+                    "queue:0": {
+                        "queue-id": 0, // Device queue 
                         "core-id": 1,
                         "region-index": 1
                     }

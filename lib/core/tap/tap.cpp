@@ -28,6 +28,8 @@ int create_virtual_device(char* name, int flags, char* ether_addr, int num_queue
     tap_fd = fd;
   }
 
+  sleep(2);
+
   int sock;
   if ((sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP)) < 0) {
     log_error("Error creating socket");

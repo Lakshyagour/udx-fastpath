@@ -33,11 +33,16 @@ WORKDIR /home/cndp/usr/local
 RUN cp -r lib/pkgconfig/* /usr/local/lib/x86_64-linux-gnu/pkgconfig/ 
 RUN cp -r lib/x86_64-linux-gnu/* /usr/local/lib/x86_64-linux-gnu/
 RUN cp -r include/* /usr/local/include/
-
+RUN cp -r bin/* /usr/local/bin/
 
 WORKDIR /home 
+RUN rm -rf cndp 
+RUN rm -rf dpdk
+
+WORKDIR /home/ubuntu 
 RUN git clone https://github.com/Lakshyagour/udx-fastpath.git
-WORKDIR /home/udx-fastpath
+WORKDIR /home/ubuntu/udx-fastpath
+RUN bash build.sh
 
 
 

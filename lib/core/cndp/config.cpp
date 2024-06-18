@@ -350,7 +350,11 @@ int parse_args(string configuration, int burst, struct fwd_info *fwd, void **fun
     jcfg_thread_foreach(fwd->jinfo, _cleanup, fwd);
     CNE_ERR_RET("*** Invalid configuration ***\n");
   }
-  memcpy(func_arr_array, func_arg_store, sizeof(void *));
+
+  for(int i=0;i<32;i++)
+  {
+    func_arr_array[i] = func_arg_store[i];
+  }
 
   if (!fwd->opts.no_metrics) {
     int ret = enable_metrics(fwd);

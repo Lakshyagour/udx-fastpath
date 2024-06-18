@@ -6,6 +6,7 @@
 #include <cne_ring.h>
 #include <cne_ring_api.h>
 #include <cne_system.h> // for cne_lcore_id
+#include <common.h>
 #include <core.h>
 #include <idlemgr.h>
 #include <jcfg.h> // for jcfg_thd_t, jcfg_lport_t, jcfg_lport_by_index
@@ -27,12 +28,16 @@ void* func_arg_for_thread_func[MAX_LPORTS];
 pthread_barrier_t barrier;
 cne_ring_t* worker_rx_rings[MAX_LPORTS];
 cne_ring_t* worker_tx_rings[MAX_LPORTS];
+vector<ether_addr> cndp_lport_mac;
 DataPlaneManager* cndp_dataplane_manager;
 CndpCallBackWrapper* cndp_callback_wrapper;
+
 #define foreach_thd_lport(_t, _lp) \
   for (int _i = 0; _i < _t->lport_cnt && (_lp = _t->lports[_i]); _i++, _lp = _t->lports[_i])
 
-#define TIMEOUT_VALUE 1000 /* Number of times to wait for each usleep() time */
+#define TIMEOUT_VALUE                                    \
+  1000 /* Number of times to wait for each usleep() time \
+        */
 enum thread_quit_state {
   THD_RUN = 0, /**< Thread should continue running */
   THD_QUIT,    /**< Thread should stop itself */
@@ -81,8 +86,8 @@ Value get_thread_template(Value configuration) {
   Value threads;
   threads["main"]["group"]       = "initial";
   threads["main"]["description"] = "setup thread";
-
-  Value netdevs = configuration["lports"];
+  int fwd_thread                 = 0;
+  Value netdevs                  = configuration["lports"];
   for (auto it = netdevs.begin(); it != netdevs.end(); it++) {
     Value dev_name    = it.key();
     Value lport       = *it;
@@ -90,7 +95,7 @@ Value get_thread_template(Value configuration) {
     Value queues_info = lport["rx-tx-queues-info"];
 
     for (auto rx_tx_queue = queues_info.begin(); rx_tx_queue != queues_info.end(); rx_tx_queue++) {
-      string key             = "fwd:" + to_string(lport_id);
+      string key             = "fwd:" + to_string(fwd_thread);
       threads[key]["group"]  = "group" + (*rx_tx_queue)["core-id"].asString();
       threads[key]["lports"] = Json::arrayValue;
       threads[key]["lports"].append(dev_name.asString() + ":" + to_string(lport_id));
@@ -100,6 +105,7 @@ Value get_thread_template(Value configuration) {
         threads[key]["intr_timeout"] = configuration["intr_timeout"].asInt();
       threads[key]["description"] = "fwd thread";
       lport_id++;
+      fwd_thread++;
     }
   }
   return threads;
@@ -107,15 +113,18 @@ Value get_thread_template(Value configuration) {
 
 Value get_lport_template(Value configuration) {
   Value lports;
-
   Value netdevs = configuration["lports"];
+  ether_addr dev_mac;
   for (auto it = netdevs.begin(); it != netdevs.end(); it++) {
-    Value dev_name    = it.key();
-    Value netdev      = *it;
-    int lport_id      = 0;
+    Value dev_name = it.key().asString();
+    Value netdev   = *it;
+    int queue_id   = 0;
+
+    get_mac_address(dev_name.asCString(), dev_mac.ether_addr_octet);
+
     Value queues_info = netdev["rx-tx-queues-info"];
     for (auto rx_tx_queue : queues_info) {
-      string key                 = dev_name.asString() + ":" + to_string(lport_id);
+      string key                 = dev_name.asString() + ":" + to_string(queue_id);
       lports[key]["description"] = "fwd thread";
       lports[key]["pmd"]         = netdev["pmd"];
       lports[key]["umem"]        = netdev["umem"];
@@ -130,7 +139,8 @@ Value get_lport_template(Value configuration) {
 
       lports[key]["region"] = rx_tx_queue["region-index"].asInt();
       lports[key]["qid"]    = rx_tx_queue["queue-id"].asInt();
-      lport_id++;
+      queue_id++;
+      cndp_lport_mac.push_back(dev_mac);
     }
   }
   return lports;
@@ -193,18 +203,18 @@ String get_cndp_configuration(Value configuration) {
 
 static __cne_always_inline int __rx_burst(pkt_api_t api, struct fwd_port* pd, pktmbuf_t** mbufs, int n_pkts) {
   switch (api) {
-  case XSKDEV_PKT_API: return xskdev_rx_burst(pd->xsk, (void**)mbufs, n_pkts);
-  case PKTDEV_PKT_API: return pktdev_rx_burst(pd->lport, mbufs, n_pkts);
-  default: break;
+    case XSKDEV_PKT_API: return xskdev_rx_burst(pd->xsk, (void**)mbufs, n_pkts);
+    case PKTDEV_PKT_API: return pktdev_rx_burst(pd->lport, mbufs, n_pkts);
+    default: break;
   }
   return 0;
 }
 
 static __cne_always_inline int __tx_burst(pkt_api_t api, struct fwd_port* pd, pktmbuf_t** mbufs, int n_pkts) {
   switch (api) {
-  case XSKDEV_PKT_API: return xskdev_tx_burst(pd->xsk, (void**)mbufs, n_pkts);
-  case PKTDEV_PKT_API: return pktdev_tx_burst(pd->lport, mbufs, n_pkts);
-  default: break;
+    case XSKDEV_PKT_API: return xskdev_tx_burst(pd->xsk, (void**)mbufs, n_pkts);
+    case PKTDEV_PKT_API: return pktdev_tx_burst(pd->lport, mbufs, n_pkts);
+    default: break;
   }
   return 0;
 }
@@ -252,13 +262,13 @@ static int _create_txbuff(jcfg_info_t* jinfo __cne_unused, void* obj, void* arg,
 
   pkt_api_t pkt_api = thd_private->pkt_api;
   switch (pkt_api) {
-  case XSKDEV_PKT_API:
-    txbuffs[idx] = txbuff_xskdev_create(fwd->burst, txbuff_count_callback, &pd->tx_overrun, pd->xsk);
-    break;
-  case PKTDEV_PKT_API:
-    txbuffs[idx] = txbuff_pktdev_create(fwd->burst, txbuff_count_callback, &pd->tx_overrun, pd->lport);
-    break;
-  default: txbuffs[idx] = NULL; break;
+    case XSKDEV_PKT_API:
+      txbuffs[idx] = txbuff_xskdev_create(fwd->burst, txbuff_count_callback, &pd->tx_overrun, pd->xsk);
+      break;
+    case PKTDEV_PKT_API:
+      txbuffs[idx] = txbuff_pktdev_create(fwd->burst, txbuff_count_callback, &pd->tx_overrun, pd->lport);
+      break;
+    default: txbuffs[idx] = NULL; break;
   }
   if (!txbuffs[idx])
     CNE_ERR_RET("Failed to create txbuff for lport %d\n", idx);
@@ -301,14 +311,17 @@ static int create_per_thread_txbuff(jcfg_thd_t* thd, struct fwd_info* fwd) {
 }
 
 int send_single_packet(char* buffer, int read_len, int lpid) {
+
   struct thread_func_arg_t* func_arg = (struct thread_func_arg_t*)func_arg_for_thread_func[lpid];
   struct fwd_info* fwd               = func_arg->fwd;
   jcfg_thd_t* thd                    = func_arg->thd;
-  jcfg_lport_t* lport                = thd->lports[lpid];
+  jcfg_lport_t* lport                = thd->lports[0];
+
 
   struct fwd_port* pd = (struct fwd_port*)lport->priv_;
   pktmbuf_t* tx_mbufs[1];
   int n_pkts, n;
+
 
   if (!pd)
     CNE_ERR("fwd_port passed in lport private data is NULL\n");
@@ -342,16 +355,21 @@ void tap_handler_cndp() {
     sleep(1);
 
   cne_register("TAP_THREAD");
-  while ((read_len = read(cndp_dataplane_manager->get_tap_device_fd(), buffer, 2048)) > 0 &&
-  cndp_dataplane_manager->is_running()) {
+  while ((read_len = read(cndp_dataplane_manager->get_tap_device_fd(), buffer, 2048)) > 0 && cndp_dataplane_manager->is_running()) {
     int ether_type = cndp_dataplane_manager->get_ether_type(buffer + PI_LEN, read_len - PI_LEN);
 
-    if (ether_type == PTYPE_L2_ETHER_ARP) {
-      int verdict = cndp_dataplane_manager->arp_handler(buffer + PI_LEN, KERNEL);
-      if (verdict != DROP) {
-        send_single_packet(buffer + PI_LEN, read_len - PI_LEN, verdict);
-      }
+    if (ether_type == PTYPE_L2_ETHER_ARP) { // This must be a arp request send via all lports
 
+      unsigned char src_mac[ETH_ALEN];
+      struct cne_arp_hdr* arp_packet = (cne_arp_hdr*)(buffer + PI_LEN + ETH_HLEN);
+      struct ethhdr* eth_hdr         = (struct ethhdr*)(buffer + PI_LEN);
+
+      for (int lport = 0; lport < cndp_lport_mac.size(); lport++) {
+        memcpy(src_mac, cndp_lport_mac[lport].ether_addr_octet, ETH_ALEN);
+        memcpy(arp_packet->arp_data.arp_sha.ether_addr_octet, src_mac, ETH_ALEN);
+        memcpy(eth_hdr->h_source, src_mac, ETH_ALEN);
+        send_single_packet(buffer + PI_LEN, read_len - PI_LEN, lport);
+      }
       continue;
     }
 
@@ -359,7 +377,7 @@ void tap_handler_cndp() {
     if (verdict == DROP || verdict == KERNEL)
       continue;
 
-    send_single_packet(buffer, read_len, verdict);
+    send_single_packet(buffer + PI_LEN, read_len - PI_LEN, verdict);
   }
 }
 
@@ -382,56 +400,72 @@ int run_to_completion(jcfg_lport_t* lport, struct fwd_info* fwd) {
     return -1;
   for (int i = 0; i < n_pkts; i++) {
 
-    int ether_type =
-    cndp_dataplane_manager->get_ether_type(cndp_callback_wrapper->GetDataAtOffset(pd->rx_mbufs[i], 0),
-    cndp_callback_wrapper->GetDataLength(pd->rx_mbufs[i]));
+    int ether_type = cndp_dataplane_manager->get_ether_type(
+    cndp_callback_wrapper->GetDataAtOffset(pd->rx_mbufs[i], 0), cndp_callback_wrapper->GetDataLength(pd->rx_mbufs[i]));
 
     if (ether_type == PTYPE_L2_ETHER_ARP) {
-      int verdict = cndp_dataplane_manager->arp_handler(
-      cndp_callback_wrapper->GetDataAtOffset(pd->rx_mbufs[i], 0), lport->lpid);
+      log_info("received a arp request/reply");
+      int verdict =
+      cndp_dataplane_manager->arp_handler(cndp_callback_wrapper->GetDataAtOffset(pd->rx_mbufs[i], 0), lport->lpid);
       if (verdict == KERNEL) {
         cndp_callback_wrapper->PrependData(pd->rx_mbufs[i], 4);
-        if (tap_write(cndp_dataplane_manager->get_tap_device_fd(),
-            pktmbuf_mtod(pd->rx_mbufs[i], char*), pktmbuf_data_len(pd->rx_mbufs[i])) < 0)
-          printf("Tap Write Failed\n");
+        if (tap_write(cndp_dataplane_manager->get_tap_device_fd(), pktmbuf_mtod(pd->rx_mbufs[i], char*),
+            pktmbuf_data_len(pd->rx_mbufs[i])) < 0)
+          log_error("Tap Write Failed\n");
+        pktmbuf_free(pd->rx_mbufs[i]);
       } else if (verdict == DROP) {
+        log_info("Dropped the arp packet");
         pktmbuf_free(pd->rx_mbufs[i]);
       } else {
+        log_info("sent an arp packet");
         (void)txbuff_add(txbuff[lport->lpid], pd->rx_mbufs[i]);
       }
       continue;
     }
 
-    int port_number = cndp_dataplane_manager->get_packet_port_number(
-    cndp_callback_wrapper->GetDataAtOffset(pd->rx_mbufs[i], 0),
-    cndp_callback_wrapper->GetDataLength(pd->rx_mbufs[i]));
+    if (cndp_dataplane_manager->is_fastpath_filtering_enabled()) {
 
-    if (cndp_dataplane_manager->filter_packet(port_number))
-      continue;
+      int port_number = cndp_dataplane_manager->get_packet_port_number(
+      cndp_callback_wrapper->GetDataAtOffset(pd->rx_mbufs[i], 0), cndp_callback_wrapper->GetDataLength(pd->rx_mbufs[i]));
 
-
-    int verdict = cndp_dataplane_manager->packet_processor(pd->rx_mbufs[i], lport->lpid,
-    cndp_dataplane_manager->callbackwrapper, cndp_dataplane_manager->application_data);
-    switch (verdict) {
-    case KERNEL: {
-      cndp_callback_wrapper->PrependData(pd->rx_mbufs[i], 4);
-      struct ethhdr* ethhdr = (struct ethhdr*)(pktmbuf_mtod(pd->rx_mbufs[i], char*));
-      memcpy(ethhdr->h_dest, cndp_dataplane_manager->get_tap_ether_addr(), ETH_ALEN);
-      if (tap_write(cndp_dataplane_manager->get_tap_device_fd(),
-          pktmbuf_mtod(pd->rx_mbufs[i], char*), pktmbuf_data_len(pd->rx_mbufs[i])) < 0)
-        printf("Tap Write Failed\n");
-      pktmbuf_free(pd->rx_mbufs[i]);
-      break;
+      if (!cndp_dataplane_manager->filter_packet(port_number)) {
+        log_debug("This packet with port number %d is filtered", port_number);
+        struct ethhdr* ethhdr = (struct ethhdr*)(pktmbuf_mtod(pd->rx_mbufs[i], char*));
+        cndp_callback_wrapper->PrependData(pd->rx_mbufs[i], PI_LEN);
+        memcpy(ethhdr->h_dest, cndp_dataplane_manager->get_tap_ether_addr(), ETH_ALEN);
+        if (tap_write(cndp_dataplane_manager->get_tap_device_fd(), pktmbuf_mtod(pd->rx_mbufs[i], char*),
+            pktmbuf_data_len(pd->rx_mbufs[i])) < 0)
+          printf("Tap Write Failed\n");
+        pktmbuf_free(pd->rx_mbufs[i]);
+        continue;
+      }
     }
-    case DROP: pktmbuf_free(pd->rx_mbufs[i]); break;
 
-    default:
-      jcfg_lport_t* dst_verdict = (jcfg_lport_t*)(lst->list[verdict]);
-      (void)txbuff_add(txbuff[dst_verdict->lpid], pd->rx_mbufs[i]);
-      break;
+    int verdict = cndp_dataplane_manager->packet_processor(
+    pd->rx_mbufs[i], lport->lpid, cndp_dataplane_manager->callbackwrapper, cndp_dataplane_manager->application_data);
+    switch (verdict) {
+      case KERNEL: {
+        cndp_callback_wrapper->PrependData(pd->rx_mbufs[i], 4);
+        struct ethhdr* ethhdr = (struct ethhdr*)(pktmbuf_mtod(pd->rx_mbufs[i], char*));
+        memcpy(ethhdr->h_dest, cndp_dataplane_manager->get_tap_ether_addr(), ETH_ALEN);
+        if (tap_write(cndp_dataplane_manager->get_tap_device_fd(), pktmbuf_mtod(pd->rx_mbufs[i], char*),
+            pktmbuf_data_len(pd->rx_mbufs[i])) < 0)
+          printf("Tap Write Failed\n");
+        pktmbuf_free(pd->rx_mbufs[i]);
+        break;
+      }
+      case DROP: {
+        pktmbuf_free(pd->rx_mbufs[i]);
+        break;
+      }
+
+      default:
+        jcfg_lport_t* dst_verdict = (jcfg_lport_t*)(lst->list[verdict]);
+        (void)txbuff_add(txbuff[dst_verdict->lpid], pd->rx_mbufs[i]);
+        break;
     }
   }
-
+  int tx_pkts   = 0;
   int nb_lports = jcfg_num_lports(fwd->jinfo);
   for (int i = 0; i < nb_lports; i++) {
     jcfg_lport_t* dst = jcfg_lport_by_index(fwd->jinfo, i);
@@ -441,7 +475,7 @@ int run_to_completion(jcfg_lport_t* lport, struct fwd_info* fwd) {
 
     /* Could hang here if we can never flush the TX packets */
     while (txbuff_count(txbuff[dst->lpid]) > 0)
-      txbuff_flush(txbuff[dst->lpid]);
+      tx_pkts += txbuff_flush(txbuff[dst->lpid]);
   }
 
   return n_pkts;
@@ -466,13 +500,11 @@ int master_worker(jcfg_lport_t* lport, struct fwd_info* fwd) {
 
   unsigned int available = 0;
   do {
-    unsigned int dq =
-    cne_ring_dequeue_burst(worker_tx_rings[lport->lpid], (void**)pd->rx_mbufs, fwd->burst, &available);
+    unsigned int dq = cne_ring_dequeue_burst(worker_tx_rings[lport->lpid], (void**)pd->rx_mbufs, fwd->burst, &available);
     __tx_burst(fwd->pkt_api, pd, pd->rx_mbufs, dq);
   } while (available != 0);
   return n_pkts;
 }
-
 
 void worker_thread(int core) {
   cpu_set_t t;
@@ -485,41 +517,36 @@ void worker_thread(int core) {
     for (int lpid = 0; lpid < num_worker_rings; lpid++) {
       int dq = cne_ring_dequeue_bulk(worker_rx_rings[lpid], (void**)rx_mbufs, fwd->burst, NULL);
       for (int i = 0; i < dq; i++) {
-        int ether_type =
-        cndp_dataplane_manager->get_ether_type(cndp_callback_wrapper->GetDataAtOffset(rx_mbufs[i], 0),
-        cndp_callback_wrapper->GetDataLength(rx_mbufs[i]));
+        int ether_type = cndp_dataplane_manager->get_ether_type(
+        cndp_callback_wrapper->GetDataAtOffset(rx_mbufs[i], 0), cndp_callback_wrapper->GetDataLength(rx_mbufs[i]));
 
         if (ether_type == PTYPE_L2_ETHER_ARP) {
-          int verdict = cndp_dataplane_manager->arp_handler(
-          cndp_callback_wrapper->GetDataAtOffset(rx_mbufs[i], 0), lpid);
+          int verdict = cndp_dataplane_manager->arp_handler(cndp_callback_wrapper->GetDataAtOffset(rx_mbufs[i], 0), lpid);
           if (verdict != DROP)
             cne_ring_enqueue_bulk(worker_tx_rings[lpid], (void**)(rx_mbufs), 1, NULL);
           continue;
         }
 
         int port_number = cndp_dataplane_manager->get_packet_port_number(
-        cndp_callback_wrapper->GetDataAtOffset(rx_mbufs[i], 0),
-        cndp_callback_wrapper->GetDataLength(rx_mbufs[i]));
+        cndp_callback_wrapper->GetDataAtOffset(rx_mbufs[i], 0), cndp_callback_wrapper->GetDataLength(rx_mbufs[i]));
 
         if (cndp_dataplane_manager->filter_packet(port_number))
           continue;
 
-        int verdict = cndp_dataplane_manager->packet_processor(rx_mbufs[i], lpid,
-        cndp_dataplane_manager->callbackwrapper, cndp_dataplane_manager->application_data);
+        int verdict = cndp_dataplane_manager->packet_processor(
+        rx_mbufs[i], lpid, cndp_dataplane_manager->callbackwrapper, cndp_dataplane_manager->application_data);
         switch (verdict) {
-        case KERNEL: {
-          struct ethhdr* ethhdr = (struct ethhdr*)(pktmbuf_mtod(rx_mbufs[i], char*));
-          memcpy(ethhdr->h_dest, cndp_dataplane_manager->get_tap_ether_addr(), ETH_ALEN);
-          if (tap_write(cndp_dataplane_manager->get_tap_device_fd(),
-              pktmbuf_mtod(rx_mbufs[i], char*), pktmbuf_data_len(rx_mbufs[i])) < 0)
-            printf("Tap Write Failed\n");
-          pktmbuf_free(rx_mbufs[i]);
-          break;
-        }
-        case DROP: pktmbuf_free(rx_mbufs[i]); break;
-        default:
-          cne_ring_enqueue_bulk(worker_tx_rings[verdict], (void**)(rx_mbufs), 1, NULL);
-          break;
+          case KERNEL: {
+            struct ethhdr* ethhdr = (struct ethhdr*)(pktmbuf_mtod(rx_mbufs[i], char*));
+            memcpy(ethhdr->h_dest, cndp_dataplane_manager->get_tap_ether_addr(), ETH_ALEN);
+            if (tap_write(cndp_dataplane_manager->get_tap_device_fd(), pktmbuf_mtod(rx_mbufs[i], char*),
+                pktmbuf_data_len(rx_mbufs[i])) < 0)
+              printf("Tap Write Failed\n");
+            pktmbuf_free(rx_mbufs[i]);
+            break;
+          }
+          case DROP: pktmbuf_free(rx_mbufs[i]); break;
+          default: cne_ring_enqueue_bulk(worker_tx_rings[verdict], (void**)(rx_mbufs), 1, NULL); break;
         }
       }
     }
@@ -530,11 +557,12 @@ void rx_tx_thread(void* arg) {
   struct thread_func_arg_t* func_arg = (struct thread_func_arg_t*)arg;
   struct fwd_info* fwd               = func_arg->fwd;
   jcfg_thd_t* thd                    = func_arg->thd;
+
   jcfg_lport_t* lport;
   idlemgr_t* imgr = NULL;
   struct {
     int (*func)(jcfg_lport_t* lport, struct fwd_info* fwd);
-  } models[]      = { { run_to_completion }, { master_worker } };
+  } models[]      = {{run_to_completion}, {master_worker}};
   int model_index = 0;
 
   if (thd->group->lcore_cnt > 0)
@@ -551,8 +579,9 @@ void rx_tx_thread(void* arg) {
   if (create_per_thread_txbuff(thd, fwd))
     cne_exit("Failed to create txbuff(s) for \"%s\" thread\n", thd->name);
 
-  cne_printf("   [green]Forwarding Thread ID [orange]%d [green]on lcore [orange]%d[]\n", thd->tid,
-  cne_lcore_id());
+  cne_printf("   [green]Forwarding Thread ID [orange]%d [green]on lcore "
+             "[orange]%d[]\n",
+  thd->tid, cne_lcore_id());
 
   if (thd->idle_timeout) {
     struct fwd_port* pd;
@@ -568,18 +597,18 @@ void rx_tx_thread(void* arg) {
 
     foreach_thd_lport(thd, lport) {
       switch (fwd->pkt_api) {
-      case XSKDEV_PKT_API:
-        pd = (fwd_port*)lport->priv_;
-        if (xskdev_get_fd(pd->xsk, &fd, NULL) < 0)
-          CNE_ERR_GOTO(leave, "failed to get file descriptors for %s\n", lport->name);
-        break;
-      case PKTDEV_PKT_API:
-        memset(&info, 0, sizeof(info));
-        if (pktdev_info_get(lport->lpid, &info) < 0)
-          CNE_ERR_GOTO(leave, "failed to get info for %s\n", lport->name);
-        fd = info.rx_fd;
-        break;
-      default: break;
+        case XSKDEV_PKT_API:
+          pd = (fwd_port*)lport->priv_;
+          if (xskdev_get_fd(pd->xsk, &fd, NULL) < 0)
+            CNE_ERR_GOTO(leave, "failed to get file descriptors for %s\n", lport->name);
+          break;
+        case PKTDEV_PKT_API:
+          memset(&info, 0, sizeof(info));
+          if (pktdev_info_get(lport->lpid, &info) < 0)
+            CNE_ERR_GOTO(leave, "failed to get info for %s\n", lport->name);
+          fd = info.rx_fd;
+          break;
+        default: break;
       }
       if (fd == -1) /* account for PMDs that are not based on file descriptors */
         continue;
@@ -621,11 +650,11 @@ leave_no_lport:
 
   while (thd->quit != THD_QUIT)
     usleep(1000);
-  // Free thread_func_arg_t.
   free(func_arg);
 
-  /* There is a race between threads exiting and the destruction of thread resources. Avoid
-   * this by notifying the cleanup signal handler that this thread is done.
+  /* There is a race between threads exiting and the destruction of thread
+   * resources. Avoid this by notifying the cleanup signal handler that this
+   * thread is done.
    */
   thd->quit = THD_DONE;
 }
@@ -668,13 +697,10 @@ int setup_rss(Value rss_configuration) {
   for (auto it = rss_configuration.begin(); it != rss_configuration.end(); it++) {
     String dev_name = it.key().asString();
     Value rss_conf  = (*it);
-    // sudo ethtool -L ens261f1 combined 4
-    string command1 =
-    "ethtool -L " + dev_name + " combined " + rss_conf["num-dev-queues-combined"].asString();
+    string command1 = "ethtool -L " + dev_name + " combined " + rss_conf["num-dev-queues-combined"].asString();
     system(command1.c_str());
-    // sudo ethtool -X ens261f1 start 0 equal 2
-    string command2 = "ethtool -X " + dev_name + " start " + rss_conf["rss-start"].asString() +
-    " equal " + rss_conf["rss-equal"].asString();
+    string command2 =
+    "ethtool -X " + dev_name + " start " + rss_conf["rss-start"].asString() + " equal " + rss_conf["rss-equal"].asString();
     system(command2.c_str());
   }
   return 0;
@@ -689,7 +715,9 @@ int DataPlaneManager::start_cndp_datapath() {
 
   thread tap_handler_thread;
   string cndp_config_string = get_cndp_configuration(datapath_configuration);
-  // cout << cndp_config_string << endl;
+  cout << cndp_config_string << endl;
+  lport_mac = cndp_lport_mac;
+
   memset(&fwd_info, 0, sizeof(struct fwd_info));
   if (cne_init() || parse_args(cndp_config_string, datapath_configuration["burst"].asInt(), fwd, func_arg_for_thread_func))
     goto err;

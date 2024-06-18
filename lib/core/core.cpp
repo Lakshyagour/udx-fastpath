@@ -131,7 +131,32 @@ int DataPlaneManager::load_and_parse_config_file(char* config_file_path) {
       log_error("FastPathPort Configuration is Invalid");
       return ERROR_EXIT;
     }
-    fastpath_port_configuration = configuration[FASTPATH_PORT_CONFIGURATION_TAG];
+    Value fastpath_port_configuration = configuration[FASTPATH_PORT_CONFIGURATION_TAG];
+    if (!fastpath_port_configuration[FASTPATH_PORTS_TAG].isArray()) {
+      log_error("FASTPATH_PORTS type is invalid must be an array type");
+      return ERROR_EXIT;
+    }
+
+    fast_path_filtering = fastpath_port_configuration[FASTPATH_FILTERING_TAG].asBool();
+    auto it             = fastpath_port_configuration[FASTPATH_PORTS_TAG].begin();
+    while (it != fastpath_port_configuration[FASTPATH_PORTS_TAG].end()) {
+      if ((*it).isInt64()) {
+        fastpath_ports.insert((*it).asInt64());
+      } else if ((*it).isString()) {
+        string ports = (*it).asString();
+        int ind      = ports.find_first_of('-');
+        int start    = stoi(string(ports.begin(), ports.begin() + ind));
+        int end      = stoi(string(ports.begin() + ind + 1, ports.end()));
+        for (int i = start; i <= end; i++) {
+          fastpath_ports.insert(i);
+        }
+      } else {
+        log_warn("Unidentified type in FASTPATH_PORTS array, %s will not take effect must be INT "
+                 "or String",
+        (*it).asCString());
+      }
+      it++;
+    }
   }
   return 0;
 }
@@ -150,19 +175,19 @@ int DataPlaneManager::start_datapath_core() {
   // Start TAP Device if required.
 
   switch (API) {
-  case API_VALUE_DPDK:
-    log_info("Launching DPDK Datapath CORE");
-    start_dpdk_datapath();
-    break;
-  case API_VALUE_CNDP:
-    log_info("Launching CNDP Datapath CORE");
-    start_cndp_datapath();
-    break;
-  case API_VALUE_AFPACKET:
-    log_info("Launching AFPACKET Datapath CORE");
-    start_afpacket_datapath();
-    break;
-  default: log_error("Unknown API found in Configuration File\n");
+    case API_VALUE_DPDK:
+      log_info("Launching DPDK Datapath CORE");
+      start_dpdk_datapath();
+      break;
+    case API_VALUE_CNDP:
+      log_info("Launching CNDP Datapath CORE");
+      start_cndp_datapath();
+      break;
+    case API_VALUE_AFPACKET:
+      log_info("Launching AFPACKET Datapath CORE");
+      start_afpacket_datapath();
+      break;
+    default: log_error("Unknown API found in Configuration File\n");
   }
   return 0;
 }
@@ -194,7 +219,24 @@ int DataPlaneManager::get_model() { return MODEL; }
 
 uint8_t* DataPlaneManager::get_tap_ether_addr() { return tap_mac_addr; }
 
-int DataPlaneManager::get_packet_port_number(char* buff, int len) { return 0; }
+int DataPlaneManager::get_packet_port_number(char* data, int len) {
+  ether_header* eth_addr = (ether_header*)(data);
+  data                   = (char*)(eth_addr + 1);
+
+  if (eth_addr->ether_type != htons(ETH_P_IP))
+    return 0;
+
+  struct iphdr* iph = (struct iphdr*)data;
+  data              = (char*)(iph + 1);
+
+  if (iph->protocol != (IPPROTO_UDP))
+    return 0;
+
+  struct udphdr* udph = (struct udphdr*)(data);
+  data                = (char*)(udph + 1);
+
+  return htons(udph->dest);
+}
 
 int DataPlaneManager::get_ether_type(char* data, int len) {
   struct hdr_lens hdr_lens;
@@ -209,7 +251,6 @@ int DataPlaneManager::get_ether_type(char* data, int len) {
   if (protocol == htobe16(PID_ETH_ARP)) {
     return packet_type = PTYPE_L2_ETHER_ARP;
   }
-  cout << "pacekt is not packet" << endl;
 
   if (protocol == htobe16(PID_ETH_IP)) {
     struct iphdr* iphdr = (struct iphdr*)(data + offset);
@@ -241,8 +282,8 @@ int DataPlaneManager::get_ether_type(char* data, int len) {
   return packet_type;
 }
 
-int DataPlaneManager::filter_packet(int port_number) { return 0; }
-
+int DataPlaneManager::filter_packet(int port_number) { return fastpath_ports.count(port_number); }
+bool DataPlaneManager::is_fastpath_filtering_enabled() { return fast_path_filtering; }
 
 int DataPlaneManager::create_multiqueue_tap_device(char* iface_name, char* ipaddr, int prefix_bits) {
   if (!create_tap) {
@@ -271,16 +312,7 @@ int DataPlaneManager::create_multiqueue_tap_device(char* iface_name, char* ipadd
     log_error("netlink_link_up %s", strerror(errno));
     exit(EXIT_FAILURE);
   }
-  print_mac_address(tap_mac_addr);
 
-  tap_mac_addr[0] = 0x0a;
-  tap_mac_addr[1] = 0x5a;
-  tap_mac_addr[2] = 0x81;
-  tap_mac_addr[3] = 0x5d;
-  tap_mac_addr[4] = 0x35;
-  tap_mac_addr[5] = 0x39;
-
-  get_mac_address_sysfs(iface_name, NULL);
   print_mac_address(tap_mac_addr);
   ip_str_to_uint32(ipaddr, tap_ip_addr);
 
@@ -289,7 +321,6 @@ int DataPlaneManager::create_multiqueue_tap_device(char* iface_name, char* ipadd
 }
 void DataPlaneManager::print_configuration() {
   cout << worker_configuration.toStyledString();
-  cout << fastpath_port_configuration.toStyledString();
   cout << datapath_configuration.toStyledString();
 }
 
@@ -304,11 +335,14 @@ void print_arp_packet(struct cne_arp_hdr* arp_packet) {
 
   printf("  |-Sender MAC: ");
   print_mac_address(arp_packet->arp_data.arp_sha.ether_addr_octet);
-  printf("  |-Sender IP: %s\n", inet_ntoa(*(struct in_addr*)&arp_packet->arp_data.arp_sip));
-
+  struct in_addr sender_ip;
+  sender_ip.s_addr = arp_packet->arp_data.arp_sip;
+  printf("  |-Sender IP: %s\n", inet_ntoa(sender_ip));
+  struct in_addr target_ip;
+  target_ip.s_addr = arp_packet->arp_data.arp_tip;
   printf("  |-Target MAC: ");
   print_mac_address(arp_packet->arp_data.arp_tha.ether_addr_octet);
-  printf("  |-Target IP: %s\n", inet_ntoa(*(struct in_addr*)&arp_packet->arp_data.arp_tip));
+  printf("  |-Target IP: %s\n", inet_ntoa(target_ip));
 }
 
 void construct_arp_response(struct cne_arp_hdr* arp, const uint8_t* src_mac, uint32_t src_ip, const uint8_t* dst_mac, uint32_t dst_ip) {
@@ -326,47 +360,32 @@ void construct_arp_response(struct cne_arp_hdr* arp, const uint8_t* src_mac, uin
 
 int DataPlaneManager::arp_handler(char* buff, int recv_port) {
 
-  // print_packet(callback_wrapper->GetDataAtOffset(buff, 0), callback_wrapper->GetDataLength(buff));
-  // print_arp_packet((cne_arp_hdr*)callback_wrapper->GetDataAtOffset(buff, 14));
-  struct cne_arp_hdr* arp_packet = (cne_arp_hdr*)(buff + 14);
+  struct cne_arp_hdr* arp_packet = (cne_arp_hdr*)(buff + ETH_HLEN);
   struct ethhdr* eth_hdr         = (struct ethhdr*)(buff);
 
-  if (recv_port == KERNEL) {
-    // tap device wants to resolve some ip address
-    // we need to resolve it for tap device and inject the reply to the kernel
+
+  if (ntohs(arp_packet->arp_opcode) == 1) {
+    uint32_t src_ip  = tap_ip_addr;
+    uint32_t dest_ip = arp_packet->arp_data.arp_sip;
+
     unsigned char src_mac[ETH_ALEN];
-    get_mac_address("ens261f1", src_mac);
-    memcpy(arp_packet->arp_data.arp_sha.ether_addr_octet, src_mac, ETH_ALEN);
-    memcpy(eth_hdr->h_source, src_mac, ETH_ALEN);
-    return 0;
-    // print_arp_packet(arp_packet);
-  } else {
-    if (ntohs(arp_packet->arp_opcode) == 1) {
-      uint32_t src_ip  = tap_ip_addr;
-      uint32_t dest_ip = arp_packet->arp_data.arp_sip;
+    unsigned char dest_mac[ETH_ALEN];
 
-      unsigned char src_mac[ETH_ALEN];
-      unsigned char dest_mac[ETH_ALEN];
-      get_mac_address("ens261f1", src_mac);
-      memcpy(dest_mac, arp_packet->arp_data.arp_sha.ether_addr_octet, ETH_ALEN);
+    memcpy(src_mac, lport_mac[recv_port].ether_addr_octet, ETH_ALEN);
+    memcpy(dest_mac, arp_packet->arp_data.arp_sha.ether_addr_octet, ETH_ALEN);
 
-      if (arp_packet->arp_data.arp_tip == tap_ip_addr) {
-        construct_arp_response(arp_packet, src_mac, src_ip, dest_mac, dest_ip);
-        memcpy(eth_hdr->h_dest, eth_hdr->h_source, ETH_ALEN);
-        memcpy(eth_hdr->h_source, src_mac, ETH_ALEN);
-      } else {
-        return DROP;
-      }
-    } else if (ntohs(arp_packet->arp_opcode) == 2) {
-      // this is a arp reply, tap device must have asked for it
-      // i need to generate a arp packet and send it to tap device
-      memcpy(eth_hdr->h_dest, tap_mac_addr, ETH_ALEN);
-      memcpy(arp_packet->arp_data.arp_tha.ether_addr_octet, tap_mac_addr, ETH_ALEN);
-
-      return KERNEL;
+    if (arp_packet->arp_data.arp_tip == tap_ip_addr) {
+      construct_arp_response(arp_packet, src_mac, src_ip, dest_mac, dest_ip);
+      memcpy(eth_hdr->h_dest, eth_hdr->h_source, ETH_ALEN);
+      memcpy(eth_hdr->h_source, src_mac, ETH_ALEN);
+      return recv_port;
     }
-    return recv_port;
+    return DROP;
+  } else if (ntohs(arp_packet->arp_opcode) == 2) {
+    memcpy(eth_hdr->h_dest, tap_mac_addr, ETH_ALEN);
+    memcpy(arp_packet->arp_data.arp_tha.ether_addr_octet, tap_mac_addr, ETH_ALEN);
+    print_arp_packet(arp_packet);
+    return KERNEL;
   }
-
   return DROP;
 };

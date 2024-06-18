@@ -1,0 +1,12 @@
+{
+    "application": {
+        "name": "Generic upf",
+        "description": "UPF built on CNX Library",
+        "ran-ip": "192.168.1.2",
+        "ran-mac": "3c:fd:fe:9e:7b:5c",
+        "dnn-ip": "192.168.1.3",
+        "dnn-mac": "3c:fd:fe:9e:7b:85",
+        "upf-ran-mac": "3c:fd:fe:9e:7e:34",
+        "upf-dnn-mac": "3c:fd:fe:9e:7e:35"
+    }
+}
