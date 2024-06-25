@@ -38,17 +38,21 @@ RUN cp -r bin/* /usr/local/bin/
 WORKDIR /home 
 RUN rm -rf cndp 
 RUN rm -rf dpdk
-RUN apt-get install -y libboost-all-dev 
+RUN apt-get install -y libboost-all-dev libasan5 libboost-system1.74.0 libboost-log1.74.0 libtre-dev libcpprest-dev libsctp-dev
+RUN wget http://archive.ubuntu.com/ubuntu/pool/main/y/yaml-cpp/libyaml-cpp0.7_0.7.0+dfsg-8build1_amd64.deb
+RUN dpkg -i libyaml-cpp0.7_0.7.0+dfsg-8build1_amd64.deb 
+RUN rm -rf libyaml-cpp0.7_0.7.0+dfsg-8build1_amd64.deb 
 
 WORKDIR /home/ubuntu 
-RUN touch hello4
+RUN touch hello5
 RUN git clone https://github.com/Lakshyagour/udx-fastpath.git
 WORKDIR /home/ubuntu/udx-fastpath
 RUN bash build.sh
 
 
 
-# docker build -t udx-base .
+# docker build -t udx-base . libasan5  libboost-system1.74.0 libboost-log1.74.0 libtre-dev libcpprest-dev libyaml-cpp0.7
+
 # docker save  udx-base -o  udx-base.tar
 # sudo ctr -n=k8s.io images import  udx-base.tar
 

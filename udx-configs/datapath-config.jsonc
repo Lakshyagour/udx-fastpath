@@ -45,7 +45,7 @@
         // },
         /* A logical port is defined by pci_addr there need be total of nb_ports*min(rxq,txq) logical ports */
         "lports": {
-            "0000:04:00.0": {
+            "0000:04:02.0": {
                 "rx-tx-queues-info": {
                     "queue:0": {
                         "core-id": 0,

@@ -2049,17 +2049,16 @@ void tap_handler_dpdk() {
 
   while (!ddm->is_started())
     sleep(1);
+  unsigned char src_mac[ETH_ALEN];
 
   while ((read_len = read(ddm->get_tap_device_fd(), buffer, 2048)) > 0 && ddm->is_running()) {
-    int ether_type = ddm->get_ether_type(buffer, read_len);
-
+    int ether_type         = ddm->get_ether_type(buffer, read_len);
+    struct ethhdr* eth_hdr = (struct ethhdr*)(buffer);
     if (ether_type == PTYPE_L2_ETHER_ARP) { // This must be a arp request send via all lports
 
-      unsigned char src_mac[ETH_ALEN];
       struct cne_arp_hdr* arp_packet = (cne_arp_hdr*)(buffer + ETH_HLEN);
-      struct ethhdr* eth_hdr         = (struct ethhdr*)(buffer);
 
-      cout << "changing paket" << endl;
+      cout << "changing packet" << endl;
       for (int lport = 0; lport < dpdk_port_mac.size(); lport++) {
         memcpy(src_mac, dpdk_port_mac[lport].ether_addr_octet, ETH_ALEN);
         memcpy(arp_packet->arp_data.arp_sha.ether_addr_octet, src_mac, ETH_ALEN);
@@ -2073,6 +2072,7 @@ void tap_handler_dpdk() {
     if (verdict == DROP || verdict == KERNEL)
       continue;
 
+    memcpy(eth_hdr->h_source, dpdk_port_mac[verdict].ether_addr_octet, ETH_ALEN);
     send_single_packet_dpdk(buffer, read_len, verdict);
   }
 }
