@@ -1,0 +1,41 @@
+{
+	"version" : "1.0",
+
+	"UPF" : [
+		{	
+            "anchorUpf" : "yes",
+            "ulclUpf" : "no",
+			"s-nssai-list" : [
+				{
+					"sNssai" : {
+						"sst" : 1,
+						"sd": 0,
+						"default-dnn": "dnn1.slice1.net",
+						"default-dnai": "cloud.internet.net",
+						"dnn-list": [
+							"dnn2.slice1.net",
+							"dnn3.slice1.net",
+							"dnn4.slice1.net",
+							"dnn5.slice1.net",
+							"dnn6.slice1.net",
+							"dnn7.slice1.net",
+							"dnn8.slice1.net",
+							"dnn9.slice1.net",
+							"dnn10.slice1.net",
+							"dnn11.slice1.net",
+							"dnn12.slice1.net",
+							"dnn13.slice1.net",
+							"dnn14.slice1.net",
+							"dnn15.slice1.net"	
+						],
+						"dnai-list": []
+					}
+				}
+			],
+			"teidri": 4,
+			"v4":1,
+			"v6":0
+		}
+	]
+	
+}

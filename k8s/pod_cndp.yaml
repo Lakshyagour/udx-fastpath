@@ -13,7 +13,7 @@ spec:
       command:
         - sleep
         - inf
-      image: udx-base
+      image: docker.io/library/udx-base
       imagePullPolicy: Never
       securityContext:
         capabilities:

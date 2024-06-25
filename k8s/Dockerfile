@@ -41,14 +41,14 @@ RUN rm -rf dpdk
 RUN apt-get install -y libboost-all-dev 
 
 WORKDIR /home/ubuntu 
-RUN touch hello1
+RUN touch hello4
 RUN git clone https://github.com/Lakshyagour/udx-fastpath.git
 WORKDIR /home/ubuntu/udx-fastpath
 RUN bash build.sh
 
 
 
-
-# docker save afxdp-device-plugin -o afxdp-device-plugin.tar
-# sudo ctr -n=k8s.io images import afxdp-device-plugin.tar
+# docker build -t udx-base .
+# docker save  udx-base -o  udx-base.tar
+# sudo ctr -n=k8s.io images import  udx-base.tar
 

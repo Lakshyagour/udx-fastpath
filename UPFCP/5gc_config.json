@@ -1,0 +1,79 @@
+{
+	"version" : "1.0",
+
+	"5gc-config-file-version" : 1.0,
+        "COMMENT" : "All the communication ports to be used across NFs should be within the well defined Port range[49152 - 65535]",
+        "COMMENT" : "The port values should not be repeated across NFs or with RANEMU interfaces",
+	"nrf-info" : {
+		"nrf-ip" : "192.168.1.2",
+		"nrf-fqdn" : "192.168.1.2:1111",
+		"nrf-port" : "1111",
+		"nrf-instanceid" : "112b2396-47ff-4bea-bbaa-43a1994f8611"
+	},
+
+	"nrf-config" : {
+		"heartbeat-time" : 3600, 
+		"cache-time" : 86400, 
+		"suspend-offset" : 2
+	}, 
+
+	"nf-discovery-required" : "true",
+	"nf-deRegistration-required" : "false",
+
+	"amf-local-config-ip" : "10.0.0.21",
+	"amf-port" : "65534",
+	"ausf-local-config-ip" : "10.0.0.22",
+	"ausf-port" : "65533",
+	"udm-local-config-ip" : "10.0.0.23",
+	"udm-port" : "65532",
+	"udr-local-config-ip" : "10.0.0.23",
+	"udr-port" : "65531",
+	"udr-flag" : 1,
+	"smf-local-config-ip" : "10.0.0.24",
+	"smf-port" : "65530",
+	"upf-local-config-ip" : "10.0.0.25",
+	"nef-local-config-ip" : "10.0.0.26",
+        "nef-port" : "65529",
+        "pcf-local-config-ip" : "10.0.0.27",
+        "pcf-port" : "65528",
+
+	"5gc-nf-failure-timeout" : 3,
+	"5gc-nf-failure-retry-counter" : 3,
+
+	"ausf-s-nssai-list" : {
+		"num-slices": 1,
+		"ausf-s-nssai-1" : [
+			{ "sst" : 1,
+			  "sd" : 0
+			}
+		]
+	},
+
+	"nrf-s-nssai-list" : {
+		"num-slices": 1,
+		"ausf-s-nssai-1" : [
+			{ "sst" : 1,
+			  "sd" : 0
+			}
+		]
+	},
+
+	"udm-s-nssai-list" : {
+		"num-slices": 1,
+		"udm-s-nssai-1" : [
+			{ "sst" : 1,
+			  "sd" : 0
+			}
+		]
+	},
+
+	"udr-s-nssai-list" : {
+		"num-slices": 1,
+		"udm-s-nssai-1" : [
+			{ "sst" : 1,
+			  "sd" : 0
+			}
+		]
+	}
+
+}

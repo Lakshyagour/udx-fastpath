@@ -3,7 +3,7 @@ kind: Pod
 metadata:
   name: dpdk-upf
   annotations:
-    k8s.v1.cni.cncf.io/networks: sriov-net1, tap-network
+    k8s.v1.cni.cncf.io/networks: tap-network
 spec:
   volumes:
   - name: shared-data
@@ -13,7 +13,7 @@ spec:
       command:
         - sleep
         - inf
-      image: udx-base
+      image: docker.io/library/udx-base
       imagePullPolicy: Never
       securityContext:
         capabilities:
@@ -33,7 +33,12 @@ spec:
       volumeMounts:
         - name: tap-sock
           mountPath: /tmp/tap_sock
+        - name: hugepage
+          mountPath: /hugepages
   volumes:
     - name: tap-sock
       hostPath:
         path: /tmp/tap_sock
+    - name: hugepage
+      emptyDir:
+        medium: HugePages

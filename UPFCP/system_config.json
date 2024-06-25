@@ -1,0 +1,57 @@
+{
+	"version" : "1.0",  
+
+	"home-plmn" : {
+		"mcc" : 404, 
+		"mnc-size" : 2,
+		"mnc" : 0,
+		"network" : "3gppnetwork.org",
+		"ta-list" :{
+			"num-tas" : 2, 
+			"ta-info" : [
+					{
+						"tac-id" : 1,
+						"num-slices": 1, 
+							"nssai" : [
+								{"sst": 1, "sd": 0} 
+							] 
+					},
+					{
+						"tac-id" : 2,
+						"num-slices": 1, 
+							"nssai" : [
+								{"sst": 1, "sd": 0} 
+							] 
+					} 
+			]
+		}
+	},
+
+	"security-info": {
+		"nas-integrity":  {
+            "status" : "off",
+			"nas-integrity-NIA0" : "true", 
+			"nas-integrity-NIA1" : "false", 
+			"nas-integrity-NIA2" : "true",
+			"nas-integrity-NIA3" : "false"  
+		},
+		"nas-ciphering":  {
+            "status" : "off",
+			"nas-ciphering-NEA0" : "true", 
+			"nas-ciphering-NEA1" : "false", 
+			"nas-ciphering-NEA2" : "true",
+			"nas-ciphering-NEA3" : "false"  
+		}
+	}, 
+
+	"timer-info" : {
+		"T3512" : 3260, 
+		"T3502" : 720,
+        "TN3GPPDEREG": 3260
+	},
+
+	"drx-info" :[ {
+		"ue-specific-idle-drx" : 32,
+		"ran-default-paging-drx" : 32
+	}]
+}
