@@ -83,6 +83,7 @@ class DataPlaneManager {
   int tap_fd         = -1;
   int create_tap     = false;
   int num_queues_tap = 1;
+  int cloud_deployment = 0;
   uint32_t tap_ip_addr;
   uint8_t tap_mac_addr[ETH_ALEN];
   vector<ether_addr> lport_mac;

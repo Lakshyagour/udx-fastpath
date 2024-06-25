@@ -1,0 +1,39 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: dpdk-upf
+  annotations:
+    k8s.v1.cni.cncf.io/networks: sriov-net1, tap-network
+spec:
+  volumes:
+  - name: shared-data
+    emptyDir: {}
+  containers:
+    - name: udx-app
+      command:
+        - sleep
+        - inf
+      image: udx-base
+      imagePullPolicy: Never
+      securityContext:
+        capabilities:
+          add:
+            - NET_RAW
+            - IPC_LOCK
+      resources:
+        requests:
+          memory: 10Gi
+          cpu: "8"
+          intel.com/intel_sriov_dpdk_ens261f0: "1"
+        limits:
+          hugepages-2Mi: 8Gi
+          memory: 10Gi
+          cpu: "8"
+          intel.com/intel_sriov_dpdk_ens261f0: "1"
+      volumeMounts:
+        - name: tap-sock
+          mountPath: /tmp/tap_sock
+  volumes:
+    - name: tap-sock
+      hostPath:
+        path: /tmp/tap_sock

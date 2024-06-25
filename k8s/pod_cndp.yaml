@@ -1,0 +1,37 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: cndp-upf
+  annotations:
+    k8s.v1.cni.cncf.io/networks: cndp-cni-afxdp0
+spec:
+  volumes:
+  - name: shared-data
+    emptyDir: {}
+  containers:
+    - name: udx-app
+      command:
+        - sleep
+        - inf
+      image: udx-base
+      imagePullPolicy: Never
+      securityContext:
+        capabilities:
+          add:
+            - NET_RAW
+            - IPC_LOCK
+            - BPF
+      resources:
+        requests:
+          afxdp/myPool: '1'
+        limits:
+          afxdp/myPool: '1'
+          hugepages-2Mi: 512Mi
+          memory: 2Gi
+      volumeMounts:
+        - name: tap-sock
+          mountPath: /tmp/tap_sock
+  volumes:
+    - name: tap-sock
+      hostPath:
+        path: /tmp/tap_sock

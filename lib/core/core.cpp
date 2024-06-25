@@ -3,6 +3,9 @@
 #include <fstream>
 #include <jsoncpp/json/value.h>
 #include <log.h>
+#include <sys/socket.h>
+#include <sys/types.h>
+#include <sys/un.h>
 #include <tap.h>
 #include <unet.h>
 
@@ -125,6 +128,11 @@ int DataPlaneManager::load_and_parse_config_file(char* config_file_path) {
     log_error("Unknown Model --%s-- is selected");
     return ERROR_EXIT;
   }
+
+  if (configuration.isMember(CLOUD_DEPLOYMENT_TAG)) {
+    cloud_deployment = configuration[CLOUD_DEPLOYMENT_TAG].asBool();
+  }
+
 
   if (configuration.isMember(FASTPATH_PORT_CONFIGURATION_TAG)) {
     if (validate_fastpath_port_configuration(configuration[FASTPATH_PORT_CONFIGURATION_TAG])) {
@@ -282,18 +290,93 @@ int DataPlaneManager::get_ether_type(char* data, int len) {
   return packet_type;
 }
 
-int DataPlaneManager::filter_packet(int port_number) { return fastpath_ports.count(port_number); }
+int DataPlaneManager::filter_packet(int port_number) { return fastpath_ports.count(port_number) == 0; }
 bool DataPlaneManager::is_fastpath_filtering_enabled() { return fast_path_filtering; }
 
+int receive_fd(int socket) {
+  struct msghdr msg = {0};
+
+  // Buffer for the ancillary data
+  char buf[CMSG_SPACE(sizeof(int))];
+  memset(buf, 0, sizeof(buf));
+
+  // Buffer for the actual message
+  char dummy_data[1];
+  struct iovec io = {.iov_base = dummy_data, .iov_len = sizeof(dummy_data)};
+
+  msg.msg_iov        = &io;
+  msg.msg_iovlen     = 1;
+  msg.msg_control    = buf;
+  msg.msg_controllen = sizeof(buf);
+
+  ssize_t len = recvmsg(socket, &msg, 0);
+  if (len < 0) {
+    std::cerr << "Failed to receive message: " << strerror(errno) << std::endl;
+    return -1;
+  }
+
+  if (msg.msg_controllen < sizeof(struct cmsghdr)) {
+    std::cerr << "No control message received" << std::endl;
+    return -1;
+  }
+
+  struct cmsghdr* cmsg = CMSG_FIRSTHDR(&msg);
+
+  if (cmsg == NULL) {
+    std::cerr << "No control message received" << std::endl;
+    return -1;
+  }
+
+  if (cmsg->cmsg_len != CMSG_LEN(sizeof(int))) {
+    std::cerr << "Invalid control message length" << std::endl;
+    return -1;
+  }
+
+  if (cmsg->cmsg_level != SOL_SOCKET || cmsg->cmsg_type != SCM_RIGHTS) {
+    std::cerr << "Invalid control message level/type" << std::endl;
+    return -1;
+  }
+
+  int fd;
+  memcpy(&fd, CMSG_DATA(cmsg), sizeof(int));
+  return fd;
+}
+
 int DataPlaneManager::create_multiqueue_tap_device(char* iface_name, char* ipaddr, int prefix_bits) {
+
+  if (cloud_deployment) {
+    cout << "Getting Tap Fd From /tmp/tap_sock/tap0.sock" << endl;
+    int sock = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (sock < 0) {
+      std::cerr << "Failed to create socket: " << strerror(errno) << std::endl;
+      return 1;
+    }
+
+    struct sockaddr_un addr;
+    memset(&addr, 0, sizeof(addr));
+    addr.sun_family = AF_UNIX;
+    strncpy(addr.sun_path, "/tmp/tap_sock/tap0.sock", sizeof(addr.sun_path) - 1);
+
+    if (connect(sock, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
+      std::cerr << "Failed to connect to socket: " << strerror(errno) << std::endl;
+      close(sock);
+      return 1;
+    }
+    tap_fd = receive_fd(sock);
+    get_mac_address("tap0", tap_mac_addr);
+    ip_str_to_uint32((char*)get_ip_address("tap0").c_str(), tap_ip_addr);
+    return 0;
+  }
+
   if (!create_tap) {
     cout << "Create Tun Device set to false" << endl;
     return 0;
   }
 
+
   log_info("Creating Tun Device");
 
-  if (create_virtual_device(iface_name, IFF_TAP | IFF_MULTI_QUEUE, (char*)tap_mac_addr, 1, tap_fd)) {
+  if (create_virtual_device(iface_name, IFF_TAP | IFF_MULTI_QUEUE | IFF_NO_PI, (char*)tap_mac_addr, 1, tap_fd)) {
     log_error("Tap Device Creation Failed");
     exit(EXIT_FAILURE);
   }

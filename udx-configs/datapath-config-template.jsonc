@@ -8,6 +8,7 @@
     "MODEL": "run-to-completion | master-worker",
     /* Log Level Of Application one of the following DEBUG, INFO, WARN, ERROR */
     "LOG_LEVEL": "VERBOSE",
+    "cloud-deployment": true,
     "workers-configuration": {
         "worker-cores": [
             "1-4"

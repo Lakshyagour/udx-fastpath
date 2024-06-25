@@ -27,6 +27,7 @@
 
 #define CREATE_TAP_TAG "create-tap-device"
 #define TAP_DEVICE_NUM_QUEUES_TAG "tap-device-num-queues"
+#define CLOUD_DEPLOYMENT_TAG "cloud-deployment"
 
 #define FASTPATH_PORT_CONFIGURATION_TAG "fastpath-port-configuration"
 #define FASTPATH_FILTERING_TAG "fastpath-filtering"

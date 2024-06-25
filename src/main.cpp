@@ -13,7 +13,7 @@ int tap_processor(char* pkt, int len, void* application_data) {
 }
 
 int packet_processor(void* packet, int recv_lport, CallBackWrapper* callbacks, void* application_data) {
-  cout << "received a packet" << endl;
+  // cout << "received a packet" << endl;
   struct ether_header* eth    = (struct ether_header*)callbacks->GetDataAtOffset(packet, 0);
   struct ether_addr* src_addr = (struct ether_addr*)&eth->ether_shost;
   struct ether_addr* dst_addr = (struct ether_addr*)&eth->ether_dhost;

@@ -1,4 +1,5 @@
 #include <common.h>
+#include <ifaddrs.h>
 #include <log.h>
 
 using namespace std;
@@ -9,6 +10,31 @@ void ip_str_to_uint32(char* ip_str, uint32_t& ip_int32) {
     exit(EXIT_FAILURE);
   }
   ip_int32 = ip_addr.s_addr;
+}
+
+string get_ip_address(char* interfaceName) {
+  struct ifaddrs *ifaddr, *ifa;
+  char addrBuffer[INET_ADDRSTRLEN];
+
+  if (getifaddrs(&ifaddr) == -1) {
+    perror("getifaddrs");
+    return "";
+  }
+
+  for (ifa = ifaddr; ifa != nullptr; ifa = ifa->ifa_next) {
+    if (ifa->ifa_addr == nullptr)
+      continue;
+
+    if (ifa->ifa_addr->sa_family == AF_INET && strncmp(interfaceName,ifa->ifa_name,strlen(interfaceName))==0) {
+      void* addrPtr = &((struct sockaddr_in*)ifa->ifa_addr)->sin_addr;
+      inet_ntop(AF_INET, addrPtr, addrBuffer, INET_ADDRSTRLEN);
+      freeifaddrs(ifaddr);
+      return std::string(addrBuffer);
+    }
+  }
+
+  freeifaddrs(ifaddr);
+  return "";
 }
 
 void get_mac_address(const char* interface, uint8_t* mac) {
@@ -68,7 +94,6 @@ int get_mac_address_sysfs(const char* interface, uint8_t* mac) {
   }
   inputFile.close();
   return 0;
-
 }
 
 void swap_mac_addresses(void* data) {
@@ -82,56 +107,45 @@ void swap_mac_addresses(void* data) {
   *dst_addr = tmp;
 }
 
-uint32_t get_packet_type(char *data, struct hdr_lens *hdr_lens)
-{
-    struct ethhdr *ethhdr = (struct ethhdr *)data;
-    uint32_t packet_type = PTYPE_L2_ETHER;
-    uint16_t protocol = 0;
-    uint32_t offset = 0;
-    protocol = ethhdr->h_proto;
-    offset = sizeof(struct ethhdr);
-    hdr_lens->l2_len = offset;
+uint32_t get_packet_type(char* data, struct hdr_lens* hdr_lens) {
+  struct ethhdr* ethhdr = (struct ethhdr*)data;
+  uint32_t packet_type  = PTYPE_L2_ETHER;
+  uint16_t protocol     = 0;
+  uint32_t offset       = 0;
+  protocol              = ethhdr->h_proto;
+  offset                = sizeof(struct ethhdr);
+  hdr_lens->l2_len      = offset;
 
-    if (protocol == htobe16(PID_ETH_ARP))
-    {
-        return packet_type = PTYPE_L2_ETHER_ARP;
+  if (protocol == htobe16(PID_ETH_ARP)) {
+    return packet_type = PTYPE_L2_ETHER_ARP;
+  }
+
+  if (protocol == htobe16(PID_ETH_IP)) {
+    struct iphdr* iphdr = (struct iphdr*)(data + offset);
+    packet_type         = ptype_l3_ip(iphdr->ihl);
+    hdr_lens->l3_len    = ipv4_hdr_len(iphdr);
+    offset += hdr_lens->l3_len;
+
+    protocol    = iphdr->protocol;
+    packet_type = ptype_l4(protocol);
+  }
+
+  if (packet_type == PTYPE_L4_UDP) {
+    struct udphdr* udphdr = (struct udphdr*)(data + offset);
+    hdr_lens->l4_len      = sizeof(struct udphdr);
+    offset += hdr_lens->l4_len;
+    packet_type = PTYPE_L4_UDP;
+
+    if (udphdr->dest == be16toh(GTP_PORT)) {
+      packet_type = PTYPE_5G_GTP;
+    } else if (udphdr->dest == be16toh(PFCP_PORT)) {
+      packet_type = PTYPE_5G_PFCP;
     }
-
-    if (protocol == htobe16(PID_ETH_IP))
-    {
-        struct iphdr *iphdr = (struct iphdr *)(data + offset);
-        packet_type = ptype_l3_ip(iphdr->ihl);
-        hdr_lens->l3_len = ipv4_hdr_len(iphdr);
-        offset += hdr_lens->l3_len;
-
-        protocol = iphdr->protocol;
-        packet_type = ptype_l4(protocol);
-    }
-
-    if (packet_type == PTYPE_L4_UDP)
-    {
-        struct udphdr *udphdr = (struct udphdr *)(data + offset);
-        hdr_lens->l4_len = sizeof(struct udphdr);
-        offset += hdr_lens->l4_len;
-        packet_type = PTYPE_L4_UDP;
-
-        if (udphdr->dest == be16toh(GTP_PORT))
-        {
-            packet_type = PTYPE_5G_GTP;
-        }
-        else if (udphdr->dest == be16toh(PFCP_PORT))
-        {
-            packet_type = PTYPE_5G_PFCP;
-        }
-    }
-    else if (packet_type == PTYPE_L4_TCP)
-    {
-        struct tcphdr *tcphdr = (struct tcphdr *)(data + offset);
-        hdr_lens->l4_len = (tcphdr->doff & 0xf0) >> 2;
-        offset += hdr_lens->l4_len;
-        packet_type = PTYPE_L4_TCP;
-    }
-    return packet_type;
+  } else if (packet_type == PTYPE_L4_TCP) {
+    struct tcphdr* tcphdr = (struct tcphdr*)(data + offset);
+    hdr_lens->l4_len      = (tcphdr->doff & 0xf0) >> 2;
+    offset += hdr_lens->l4_len;
+    packet_type = PTYPE_L4_TCP;
+  }
+  return packet_type;
 }
-
-

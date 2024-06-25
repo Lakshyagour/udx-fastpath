@@ -4,10 +4,11 @@
    * MODEL --  master-worker (mw) | run-to-completion (rtc)
    * API   -- DPDK, CNDP
    */
-    "API": "cndp",
+    "API": "dpdk",
     "MODEL": "run-to-completion",
     /* Log Level Of Application one of the following DEBUG, INFO, WARN, ERROR */
     "LOG_LEVEL": "VERBOSE",
+    "cloud-deployment": true,
     "workers-configuration": {
         "worker-cores": [
             "1-2"
@@ -21,7 +22,7 @@
         /* The packets with matching ports will be sent to the fast-path all other packet are sent to kernel using TUN device irrespective of packet I/O Choosen */
         "fastpath-ports": [
             2152,
-            "10000-10100"
+            "10000-12000"
         ]
     },
     "create-tap-device": true, /* Should be disabled when deploying in cloud as device plugin will handle the creation*/
@@ -34,17 +35,17 @@
         // "device-related-options": "-b, --block <[domain:]bus:devid.func> | -a, --allow <[domain:]bus:devid.func> | --vdev <device arguments> | --no-pci",
         // "multiprocessing-related-options": "--proc-type <primary|secondary|auto> | --base-virtaddr <address>",
         // "debugging-options": "--no-shconf | --no-huge | --log-level <type:val> | --trace=<regex-match> | --trace-dir=<directory path> | --trace-bufsz=<val> | --trace-mode=<o[verwrite] | d[iscard] >",
-        "queues-and-mbuf-options": {
-            "mp-alloc": "native",
-            "total-num-mbufs": 8192,
-            "burst": 32,
-            "num-rx-tx-descriptor": 512,
-            "mbcache": 16,
-            "regions": []
-        },
+        // "queues-and-mbuf-options": {
+        //     "mp-alloc": "native",
+        //     "total-num-mbufs": 8192,
+        //     "burst": 32,
+        //     "num-rx-tx-descriptor": 512,
+        //     "mbcache": 16,
+        //     "regions": []
+        // },
         /* A logical port is defined by pci_addr there need be total of nb_ports*min(rxq,txq) logical ports */
         "lports": {
-            "0000:04:02.0": {
+            "0000:04:00.0": {
                 "rx-tx-queues-info": {
                     "queue:0": {
                         "core-id": 0,

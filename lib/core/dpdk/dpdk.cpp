@@ -77,9 +77,11 @@ extern "C" {
 #include <dpdk.h>
 }
 
-DataPlaneManager* dpdk_dataplane_manager;
-DPDKCallBackWrapper* dpdk_callback_wrapper;
+DataPlaneManager* ddm;
+DPDKCallBackWrapper* dcw;
 struct rte_eth_dev_tx_buffer* tx_buffer[RTE_MAX_ETHPORTS][RTE_MAX_QUEUES_PER_PORT];
+vector<ether_addr> dpdk_port_mac;
+
 cne_ring_t* worker_rx_rings_dpdk[RTE_MAX_ETHPORTS];
 cne_ring_t* worker_tx_rings_dpdk[RTE_MAX_ETHPORTS];
 
@@ -115,7 +117,7 @@ int testpmd_logtype;        /**< Log type for testpmd logs */
 uint8_t interactive = 0;
 uint8_t auto_start  = 0;
 uint8_t tx_first;
-char cmdline_filename[PATH_MAX] = { 0 };
+char cmdline_filename[PATH_MAX] = {0};
 
 /*
  * NUMA support configuration.
@@ -198,22 +200,22 @@ bool run_to_completion(struct fwd_stream* fs);
 bool master_worker(struct fwd_stream* fs);
 
 struct fwd_engine run_to_completion_engine = {
-  .fwd_mode_name = "run_to_completion",
-  .stream_init   = common_fwd_stream_init,
-  .packet_fwd    = run_to_completion,
+.fwd_mode_name = "run_to_completion",
+.stream_init   = common_fwd_stream_init,
+.packet_fwd    = run_to_completion,
 };
 struct fwd_engine master_worker_engine = {
-  .fwd_mode_name = "master_worker",
-  .stream_init   = common_fwd_stream_init,
-  .packet_fwd    = master_worker,
+.fwd_mode_name = "master_worker",
+.stream_init   = common_fwd_stream_init,
+.packet_fwd    = master_worker,
 };
 /*
  * Forwarding engines.
  */
 struct fwd_engine* fwd_engines[] = {
-  &run_to_completion_engine,
-  &master_worker_engine,
-  NULL,
+&run_to_completion_engine,
+&master_worker_engine,
+NULL,
 };
 
 struct rte_mempool* mempools[RTE_MAX_NUMA_NODES * MAX_SEGS_BUFFER_SPLIT];
@@ -226,11 +228,11 @@ uint32_t retry_enabled;
 uint32_t burst_tx_delay_time = BURST_TX_WAIT_US;
 uint32_t burst_tx_retry_num  = BURST_TX_RETRIES;
 
-uint32_t mbuf_data_size_n = 1; /* Number of specified mbuf sizes. */
-uint16_t mbuf_data_size[MAX_SEGS_BUFFER_SPLIT] = { DEFAULT_MBUF_DATA_SIZE }; /**< Mbuf data space size. */
-uint32_t param_total_num_mbufs = 0; /**< number of mbufs in all pools - if
-                                     * specified on command-line. */
-uint16_t stats_period;              /**< Period to show statistics (disabled by default) */
+uint32_t mbuf_data_size_n                      = 1;                        /* Number of specified mbuf sizes. */
+uint16_t mbuf_data_size[MAX_SEGS_BUFFER_SPLIT] = {DEFAULT_MBUF_DATA_SIZE}; /**< Mbuf data space size. */
+uint32_t param_total_num_mbufs                 = 0;                        /**< number of mbufs in all pools - if
+                                                                            * specified on command-line. */
+uint16_t stats_period;                                                     /**< Period to show statistics (disabled by default) */
 
 /** Extended statistics to show. */
 struct rte_eth_xstat_name* xstats_display;
@@ -264,9 +266,9 @@ uint8_t multi_rx_mempool; /**< Enables multi-rx-mempool feature */
 /*
  * Configuration of packet segments used by the "txonly" processing engine.
  */
-uint16_t tx_pkt_length = TXONLY_DEF_PACKET_LEN; /**< TXONLY packet length. */
+uint16_t tx_pkt_length                            = TXONLY_DEF_PACKET_LEN; /**< TXONLY packet length. */
 uint16_t tx_pkt_seg_lengths[RTE_MAX_SEGS_PER_PKT] = {
-  TXONLY_DEF_PACKET_LEN,
+TXONLY_DEF_PACKET_LEN,
 };
 uint8_t tx_pkt_nb_segs = 1; /**< Number of segments in TXONLY packets */
 
@@ -282,9 +284,9 @@ uint32_t tx_pkt_times_inter;
 uint32_t tx_pkt_times_intra;
 /**< Timings for send scheduling in TXONLY mode, time between packets. */
 
-uint16_t nb_pkt_per_burst = DEF_PKT_BURST; /**< Number of packets per burst. */
-uint16_t nb_pkt_flowgen_clones;   /**< Number of Tx packet clones to send in flowgen mode. */
-int nb_flows_flowgen      = 1024; /**< Number of flows in flowgen mode. */
+uint16_t nb_pkt_per_burst = DEF_PKT_BURST;  /**< Number of packets per burst. */
+uint16_t nb_pkt_flowgen_clones;             /**< Number of Tx packet clones to send in flowgen mode. */
+int nb_flows_flowgen      = 1024;           /**< Number of flows in flowgen mode. */
 uint16_t mb_mempool_cache = DEF_MBUF_CACHE; /**< Size of mbuf mempool cache. */
 
 /* current configuration is in DCB or not,0 means it is not in DCB mode */
@@ -346,11 +348,11 @@ enum noisy_fwd_mode noisy_fwd_mode;
 
 /* String version of enum noisy_fwd_mode */
 const char* const noisy_fwd_mode_desc[] = {
-  [NOISY_FWD_MODE_IO]      = "io",
-  [NOISY_FWD_MODE_MAC]     = "mac",
-  [NOISY_FWD_MODE_MACSWAP] = "macswap",
-  [NOISY_FWD_MODE_5TSWAP]  = "5tswap",
-  [NOISY_FWD_MODE_MAX]     = NULL,
+[NOISY_FWD_MODE_IO]      = "io",
+[NOISY_FWD_MODE_MAC]     = "mac",
+[NOISY_FWD_MODE_MACSWAP] = "macswap",
+[NOISY_FWD_MODE_5TSWAP]  = "5tswap",
+[NOISY_FWD_MODE_MAX]     = NULL,
 };
 
 /*
@@ -445,22 +447,22 @@ uint32_t hairpin_mode;
 
 /* Pretty printing of ethdev events */
 static const char* const eth_event_desc[] = {
-  [RTE_ETH_EVENT_UNKNOWN]          = "unknown",
-  [RTE_ETH_EVENT_INTR_LSC]         = "link state change",
-  [RTE_ETH_EVENT_QUEUE_STATE]      = "queue state",
-  [RTE_ETH_EVENT_INTR_RESET]       = "reset",
-  [RTE_ETH_EVENT_VF_MBOX]          = "VF mbox",
-  [RTE_ETH_EVENT_MACSEC]           = "MACsec",
-  [RTE_ETH_EVENT_INTR_RMV]         = "device removal",
-  [RTE_ETH_EVENT_NEW]              = "device probed",
-  [RTE_ETH_EVENT_DESTROY]          = "device released",
-  [RTE_ETH_EVENT_IPSEC]            = "IPsec",
-  [RTE_ETH_EVENT_FLOW_AGED]        = "flow aged",
-  [RTE_ETH_EVENT_RX_AVAIL_THRESH]  = "RxQ available descriptors threshold reached",
-  [RTE_ETH_EVENT_ERR_RECOVERING]   = "error recovering",
-  [RTE_ETH_EVENT_RECOVERY_SUCCESS] = "error recovery successful",
-  [RTE_ETH_EVENT_RECOVERY_FAILED]  = "error recovery failed",
-  [RTE_ETH_EVENT_MAX]              = NULL,
+[RTE_ETH_EVENT_UNKNOWN]          = "unknown",
+[RTE_ETH_EVENT_INTR_LSC]         = "link state change",
+[RTE_ETH_EVENT_QUEUE_STATE]      = "queue state",
+[RTE_ETH_EVENT_INTR_RESET]       = "reset",
+[RTE_ETH_EVENT_VF_MBOX]          = "VF mbox",
+[RTE_ETH_EVENT_MACSEC]           = "MACsec",
+[RTE_ETH_EVENT_INTR_RMV]         = "device removal",
+[RTE_ETH_EVENT_NEW]              = "device probed",
+[RTE_ETH_EVENT_DESTROY]          = "device released",
+[RTE_ETH_EVENT_IPSEC]            = "IPsec",
+[RTE_ETH_EVENT_FLOW_AGED]        = "flow aged",
+[RTE_ETH_EVENT_RX_AVAIL_THRESH]  = "RxQ available descriptors threshold reached",
+[RTE_ETH_EVENT_ERR_RECOVERING]   = "error recovering",
+[RTE_ETH_EVENT_RECOVERY_SUCCESS] = "error recovery successful",
+[RTE_ETH_EVENT_RECOVERY_FAILED]  = "error recovery failed",
+[RTE_ETH_EVENT_MAX]              = NULL,
 };
 
 /*
@@ -498,7 +500,7 @@ lcoreid_t latencystats_lcore_id = -1;
 struct rte_eth_rxmode rx_mode;
 
 struct rte_eth_txmode tx_mode = {
-  .offloads = RTE_ETH_TX_OFFLOAD_MBUF_FAST_FREE,
+.offloads = RTE_ETH_TX_OFFLOAD_MBUF_FAST_FREE,
 };
 
 // volatile int test_done = 1; /* stop packet forwarding when set to 1. */
@@ -807,8 +809,8 @@ struct extmem_param {
 };
 
 static int create_extmem(uint32_t nb_mbufs, uint32_t mbuf_sz, struct extmem_param* param, bool huge) {
-  uint64_t pgsizes[] = { RTE_PGSIZE_2M, RTE_PGSIZE_1G, /* x86_64, ARM */
-    RTE_PGSIZE_16M, RTE_PGSIZE_16G };                  /* POWER */
+  uint64_t pgsizes[] = {RTE_PGSIZE_2M, RTE_PGSIZE_1G, /* x86_64, ARM */
+  RTE_PGSIZE_16M, RTE_PGSIZE_16G};                    /* POWER */
   unsigned int cur_page, n_pages, pgsz_idx;
   size_t mem_sz, cur_pgsz;
   rte_iova_t* iovas = NULL;
@@ -1086,63 +1088,63 @@ mbuf_pool_create(uint16_t mbuf_seg_size, unsigned nb_mbuf, unsigned int socket_i
   mbuf_seg_size, socket_id);
 
   switch (mp_alloc_type) {
-  case MP_ALLOC_NATIVE: {
-    /* wrapper to rte_mempool_create() */
-    TESTPMD_LOG(INFO, "preferred mempool ops selected: %s\n", rte_mbuf_best_mempool_ops());
-    rte_mp = rte_pktmbuf_pool_create(pool_name, nb_mbuf, mb_mempool_cache, 0, mbuf_seg_size, socket_id);
-    break;
-  }
-#ifndef RTE_EXEC_ENV_WINDOWS
-  case MP_ALLOC_ANON: {
-    rte_mp = rte_mempool_create_empty(pool_name, nb_mbuf, mb_size, (unsigned int)mb_mempool_cache,
-    sizeof(struct rte_pktmbuf_pool_private), socket_id, mempool_flags);
-    if (rte_mp == NULL)
-      goto err;
-
-    if (rte_mempool_populate_anon(rte_mp) == 0) {
-      rte_mempool_free(rte_mp);
-      rte_mp = NULL;
-      goto err;
+    case MP_ALLOC_NATIVE: {
+      /* wrapper to rte_mempool_create() */
+      TESTPMD_LOG(INFO, "preferred mempool ops selected: %s\n", rte_mbuf_best_mempool_ops());
+      rte_mp = rte_pktmbuf_pool_create(pool_name, nb_mbuf, mb_mempool_cache, 0, mbuf_seg_size, socket_id);
+      break;
     }
-    rte_pktmbuf_pool_init(rte_mp, NULL);
-    rte_mempool_obj_iter(rte_mp, rte_pktmbuf_init, NULL);
-    rte_mempool_mem_iter(rte_mp, dma_map_cb, NULL);
-    break;
-  }
-  case MP_ALLOC_XMEM:
-  case MP_ALLOC_XMEM_HUGE: {
-    int heap_socket;
-    bool huge = mp_alloc_type == MP_ALLOC_XMEM_HUGE;
+#ifndef RTE_EXEC_ENV_WINDOWS
+    case MP_ALLOC_ANON: {
+      rte_mp = rte_mempool_create_empty(pool_name, nb_mbuf, mb_size, (unsigned int)mb_mempool_cache,
+      sizeof(struct rte_pktmbuf_pool_private), socket_id, mempool_flags);
+      if (rte_mp == NULL)
+        goto err;
 
-    if (setup_extmem(nb_mbuf, mbuf_seg_size, huge) < 0)
-      rte_exit(EXIT_FAILURE, "Could not create external memory\n");
+      if (rte_mempool_populate_anon(rte_mp) == 0) {
+        rte_mempool_free(rte_mp);
+        rte_mp = NULL;
+        goto err;
+      }
+      rte_pktmbuf_pool_init(rte_mp, NULL);
+      rte_mempool_obj_iter(rte_mp, rte_pktmbuf_init, NULL);
+      rte_mempool_mem_iter(rte_mp, dma_map_cb, NULL);
+      break;
+    }
+    case MP_ALLOC_XMEM:
+    case MP_ALLOC_XMEM_HUGE: {
+      int heap_socket;
+      bool huge = mp_alloc_type == MP_ALLOC_XMEM_HUGE;
 
-    heap_socket = rte_malloc_heap_get_socket(EXTMEM_HEAP_NAME);
-    if (heap_socket < 0)
-      rte_exit(EXIT_FAILURE, "Could not get external memory socket ID\n");
+      if (setup_extmem(nb_mbuf, mbuf_seg_size, huge) < 0)
+        rte_exit(EXIT_FAILURE, "Could not create external memory\n");
 
-    TESTPMD_LOG(INFO, "preferred mempool ops selected: %s\n", rte_mbuf_best_mempool_ops());
-    rte_mp = rte_pktmbuf_pool_create(pool_name, nb_mbuf, mb_mempool_cache, 0, mbuf_seg_size, heap_socket);
-    break;
-  }
+      heap_socket = rte_malloc_heap_get_socket(EXTMEM_HEAP_NAME);
+      if (heap_socket < 0)
+        rte_exit(EXIT_FAILURE, "Could not get external memory socket ID\n");
+
+      TESTPMD_LOG(INFO, "preferred mempool ops selected: %s\n", rte_mbuf_best_mempool_ops());
+      rte_mp = rte_pktmbuf_pool_create(pool_name, nb_mbuf, mb_mempool_cache, 0, mbuf_seg_size, heap_socket);
+      break;
+    }
 #endif
-  case MP_ALLOC_XBUF: {
-    struct rte_pktmbuf_extmem* ext_mem;
-    unsigned int ext_num;
+    case MP_ALLOC_XBUF: {
+      struct rte_pktmbuf_extmem* ext_mem;
+      unsigned int ext_num;
 
-    ext_num = setup_extbuf(nb_mbuf, mbuf_seg_size, socket_id, pool_name, &ext_mem);
-    if (ext_num == 0)
-      rte_exit(EXIT_FAILURE, "Can't create pinned data buffers\n");
+      ext_num = setup_extbuf(nb_mbuf, mbuf_seg_size, socket_id, pool_name, &ext_mem);
+      if (ext_num == 0)
+        rte_exit(EXIT_FAILURE, "Can't create pinned data buffers\n");
 
-    TESTPMD_LOG(INFO, "preferred mempool ops selected: %s\n", rte_mbuf_best_mempool_ops());
-    rte_mp = rte_pktmbuf_pool_create_extbuf(
-    pool_name, nb_mbuf, mb_mempool_cache, 0, mbuf_seg_size, socket_id, ext_mem, ext_num);
-    free(ext_mem);
-    break;
-  }
-  default: {
-    rte_exit(EXIT_FAILURE, "Invalid mempool creation mode\n");
-  }
+      TESTPMD_LOG(INFO, "preferred mempool ops selected: %s\n", rte_mbuf_best_mempool_ops());
+      rte_mp = rte_pktmbuf_pool_create_extbuf(
+      pool_name, nb_mbuf, mb_mempool_cache, 0, mbuf_seg_size, socket_id, ext_mem, ext_num);
+      free(ext_mem);
+      break;
+    }
+    default: {
+      rte_exit(EXIT_FAILURE, "Invalid mempool creation mode\n");
+    }
   }
 
 #ifndef RTE_EXEC_ENV_WINDOWS
@@ -2020,7 +2022,60 @@ static void flush_fwd_rx_queues(void) {
   }
 }
 
-void tap_handler_dpdk() {}
+
+void send_single_packet_dpdk(char* buffer, int read_len, int lpid) {
+  rte_mbuf* pkt = rte_mbuf_raw_alloc(fwd_lcores[0]->mbp);
+  rte_pktmbuf_reset(pkt);
+  pkt->data_len = read_len;
+  pkt->nb_segs  = 1;
+  pkt->l2_len   = sizeof(struct ethhdr);
+  pkt->vlan_tci = RTE_ETHER_TYPE_IPV4;
+  pkt->l3_len   = sizeof(struct iphdr);
+  pkt->pkt_len  = read_len;
+  memcpy(rte_pktmbuf_mtod(pkt, char*), buffer, read_len);
+  int nb_tx = rte_eth_tx_buffer(lports[lpid], 0, tx_buffer[lports[lpid]][0], pkt);
+  if (unlikely(nb_tx < 0)) {
+    rte_mbuf_raw_free(pkt);
+    printf("Buffer Packet Failed");
+  }
+
+  int tx_pkts = rte_eth_tx_buffer_flush(lports[lpid], 0, tx_buffer[lports[lpid]][0]);
+}
+void tap_handler_dpdk() {
+  cout << "TAP Handler Thread Started" << endl;
+  char buffer[2048];
+  memset(buffer, 0, 2048);
+  int read_len;
+
+  while (!ddm->is_started())
+    sleep(1);
+
+  while ((read_len = read(ddm->get_tap_device_fd(), buffer, 2048)) > 0 && ddm->is_running()) {
+    int ether_type = ddm->get_ether_type(buffer, read_len);
+
+    if (ether_type == PTYPE_L2_ETHER_ARP) { // This must be a arp request send via all lports
+
+      unsigned char src_mac[ETH_ALEN];
+      struct cne_arp_hdr* arp_packet = (cne_arp_hdr*)(buffer + ETH_HLEN);
+      struct ethhdr* eth_hdr         = (struct ethhdr*)(buffer);
+
+      cout << "changing paket" << endl;
+      for (int lport = 0; lport < dpdk_port_mac.size(); lport++) {
+        memcpy(src_mac, dpdk_port_mac[lport].ether_addr_octet, ETH_ALEN);
+        memcpy(arp_packet->arp_data.arp_sha.ether_addr_octet, src_mac, ETH_ALEN);
+        memcpy(eth_hdr->h_source, src_mac, ETH_ALEN);
+        send_single_packet_dpdk(buffer, read_len, lport);
+      }
+      continue;
+    }
+
+    int verdict = ddm->tap_processor(buffer, read_len, NULL);
+    if (verdict == DROP || verdict == KERNEL)
+      continue;
+
+    send_single_packet_dpdk(buffer, read_len, verdict);
+  }
+}
 
 void fnworker_dpdk(int core) {
   cpu_set_t t;
@@ -2036,42 +2091,43 @@ void fnworker_dpdk(int core) {
       for (int i = 0; i < dq; i++) {
 
         int ether_type =
-        dpdk_dataplane_manager->get_ether_type(dpdk_callback_wrapper->GetDataAtOffset(rx_mbufs[i], 0),
-        dpdk_callback_wrapper->GetDataLength(rx_mbufs[i]));
+        ddm->get_ether_type(dcw->GetDataAtOffset(rx_mbufs[i], 0),
+        dcw->GetDataLength(rx_mbufs[i]));
 
         if (ether_type == PTYPE_L2_ETHER_ARP) {
-          int verdict = dpdk_dataplane_manager->arp_handler(
-          dpdk_callback_wrapper->GetDataAtOffset(rx_mbufs[i], 0), lpid);
+          int verdict = ddm->arp_handler(
+          rte_pktmbuf_mtod(rx_mbufs[i], char*), lpid);
+
           if (verdict != DROP) {
             cne_ring_enqueue_bulk(worker_tx_rings_dpdk[verdict], (void**)(rx_mbufs), 1, NULL);
           }
           continue;
         }
 
-        int port_number = dpdk_dataplane_manager->get_packet_port_number(
-        dpdk_callback_wrapper->GetDataAtOffset(rx_mbufs[i], 0),
-        dpdk_callback_wrapper->GetDataLength(rx_mbufs[i]));
+        int port_number = ddm->get_packet_port_number(
+        dcw->GetDataAtOffset(rx_mbufs[i], 0),
+        dcw->GetDataLength(rx_mbufs[i]));
 
-        if (dpdk_dataplane_manager->filter_packet(port_number))
+        if (ddm->filter_packet(port_number))
           continue;
 
 
-        int verdict = dpdk_dataplane_manager->packet_processor(rx_mbufs[i], lpid,
-        dpdk_dataplane_manager->callbackwrapper, dpdk_dataplane_manager->application_data);
+        int verdict = ddm->packet_processor(rx_mbufs[i], lpid,
+        ddm->callbackwrapper, ddm->application_data);
         switch (verdict) {
-        case KERNEL: {
-          struct ethhdr* ethhdr = (struct ethhdr*)(pktmbuf_mtod(rx_mbufs[i], char*));
-          memcpy(ethhdr->h_dest, dpdk_dataplane_manager->get_tap_ether_addr(), ETH_ALEN);
-          if (tap_write(dpdk_dataplane_manager->get_tap_device_fd(),
-              pktmbuf_mtod(rx_mbufs[i], char*), pktmbuf_data_len(rx_mbufs[i])) < 0)
-            printf("Tap Write Failed\n");
-          rte_mbuf_raw_free(rx_mbufs[i]);
-          break;
-        }
-        case DROP: rte_mbuf_raw_free(rx_mbufs[i]); break;
-        default:
-          cne_ring_enqueue_bulk(worker_tx_rings_dpdk[verdict], (void**)(rx_mbufs), 1, NULL);
-          break;
+          case KERNEL: {
+            struct ethhdr* ethhdr = (struct ethhdr*)(pktmbuf_mtod(rx_mbufs[i], char*));
+            memcpy(ethhdr->h_dest, ddm->get_tap_ether_addr(), ETH_ALEN);
+            if (tap_write(ddm->get_tap_device_fd(),
+                pktmbuf_mtod(rx_mbufs[i], char*), pktmbuf_data_len(rx_mbufs[i])) < 0)
+              printf("Tap Write Failed\n");
+            rte_mbuf_raw_free(rx_mbufs[i]);
+            break;
+          }
+          case DROP: rte_mbuf_raw_free(rx_mbufs[i]); break;
+          default:
+            cne_ring_enqueue_bulk(worker_tx_rings_dpdk[verdict], (void**)(rx_mbufs), 1, NULL);
+            break;
         }
       }
     }
@@ -2102,6 +2158,15 @@ bool master_worker(struct fwd_stream* fs) {
   return true;
 }
 
+
+void send_to_kernel(struct rte_mbuf* pkt) {
+  struct ethhdr* ethhdr = (rte_pktmbuf_mtod(pkt, struct ethhdr*));
+  memcpy(ethhdr->h_dest, ddm->get_tap_ether_addr(), ETH_ALEN);
+  tap_write(ddm->get_tap_device_fd(), rte_pktmbuf_mtod(pkt, char*),
+  rte_pktmbuf_data_len(pkt));
+  rte_mbuf_raw_free(pkt);
+}
+
 bool run_to_completion(struct fwd_stream* fs) {
   struct rte_mbuf* pkts_burst[MAX_PKT_BURST];
   uint16_t nb_rx;
@@ -2114,53 +2179,73 @@ bool run_to_completion(struct fwd_stream* fs) {
     return false;
   }
   int tx_pkts = rte_eth_tx_buffer_flush(fs->rx_port, fs->rx_queue, tx_buffer[fs->rx_port][fs->rx_queue]);
-  // log_info("%d",tx_pkts);
-  // common_fwd_stream_transmit(fs, pkts_burst, nb_rx);
-  // return true;
-  // int burst_size = 0;
+
   for (int i = 0; i < nb_rx; i++) {
 
+    struct ethhdr* ethhdr = rte_pktmbuf_mtod_offset(pkts_burst[i], struct ethhdr*, 0);
+    if (ethhdr->h_proto == htobe16(PID_ETH_ARP)) {
+      int verdict = ddm->arp_handler(
+      rte_pktmbuf_mtod(pkts_burst[i], char*), fs->rx_port);
 
-    int ether_type =
-    dpdk_dataplane_manager->get_ether_type(dpdk_callback_wrapper->GetDataAtOffset(pkts_burst[i], 0),
-    dpdk_callback_wrapper->GetDataLength(pkts_burst[i]));
-
-    if (ether_type == PTYPE_L2_ETHER_ARP) {
-      int verdict = dpdk_dataplane_manager->arp_handler(
-      dpdk_callback_wrapper->GetDataAtOffset(pkts_burst[i], 0), fs->rx_port);
-      if (verdict != DROP) {
+      if (verdict == KERNEL) {
+        if (tap_write(ddm->get_tap_device_fd(), rte_pktmbuf_mtod(pkts_burst[i], char*),
+            rte_pktmbuf_data_len(pkts_burst[i])) < 0)
+          log_error("Tap Write Failed\n");
+        rte_mbuf_raw_free(pkts_burst[i]);
+      } else if (verdict == DROP) {
+        log_info("Dropped the arp packet");
+        rte_mbuf_raw_free(pkts_burst[i]);
+      } else {
+        log_info("sent an arp packet");
         rte_eth_tx_buffer(
         lports[verdict], fs->rx_queue, tx_buffer[lports[verdict]][fs->rx_queue], pkts_burst[i]);
+        break;
       }
-      continue;
     }
 
-    int port_number = dpdk_dataplane_manager->get_packet_port_number(
-    dpdk_callback_wrapper->GetDataAtOffset(pkts_burst[i], 0),
-    dpdk_callback_wrapper->GetDataLength(pkts_burst[i]));
+    if (ddm->is_fastpath_filtering_enabled()) {
+      if (ethhdr->h_proto != htons(ETH_P_IP)) {
+        send_to_kernel(pkts_burst[i]);
+      }
 
-    if (dpdk_dataplane_manager->filter_packet(port_number))
-      continue;
+      struct iphdr* iph = (struct iphdr*)(ethhdr + 1);
+      if (iph->protocol != (IPPROTO_UDP) || iph->protocol != (IPPROTO_TCP)) {
+        send_to_kernel(pkts_burst[i]);
+      }
+      int portnumber = 0;
+      switch (iph->protocol) {
+        case IPPROTO_UDP: {
+          struct udphdr* udph = (struct udphdr*)(iph + 1);
+          portnumber          = htons(udph->dest);
+          break;
+        }
 
+        case IPPROTO_TCP: {
+          struct tcphdr* tcph = (struct tcphdr*)(iph + 1);
+          portnumber          = htons(tcph->dest);
+          break;
+        }
 
-    int verdict = dpdk_dataplane_manager->packet_processor(pkts_burst[i], fs->rx_port,
-    dpdk_dataplane_manager->callbackwrapper, dpdk_dataplane_manager->application_data);
+        default:
+          break;
+      }
+      if (ddm->filter_packet(portnumber)) {
+        send_to_kernel(pkts_burst[i]);
+      }
+    }
+
+    int verdict = ddm->packet_processor(pkts_burst[i], fs->rx_port,
+    ddm->callbackwrapper, ddm->application_data);
     switch (verdict) {
-    case KERNEL: {
-      /* Make the packet look like it was destined to tap_fd */
-      struct ethhdr* ethhdr = (rte_pktmbuf_mtod(pkts_burst[i], struct ethhdr*));
-      memcpy(ethhdr->h_dest, dpdk_dataplane_manager->get_tap_ether_addr(), ETH_ALEN);
-      dpdk_dataplane_manager->callbackwrapper->PrependData(pkts_burst[i], 4);
-      tap_write(dpdk_dataplane_manager->get_tap_device_fd(), rte_pktmbuf_mtod(pkts_burst[i], char*),
-      rte_pktmbuf_data_len(pkts_burst[i]));
-      rte_mbuf_raw_free(pkts_burst[i]);
-      break;
-    }
-    case DROP: rte_mbuf_raw_free(pkts_burst[i]); break;
-    default:
-      rte_eth_tx_buffer(
-      lports[verdict], fs->rx_queue, tx_buffer[lports[verdict]][fs->rx_queue], pkts_burst[i]);
-      break;
+      case KERNEL: {
+        send_to_kernel(pkts_burst[i]);
+        break;
+      }
+      case DROP: rte_mbuf_raw_free(pkts_burst[i]); break;
+      default:
+        rte_eth_tx_buffer(
+        lports[verdict], fs->rx_queue, tx_buffer[lports[verdict]][fs->rx_queue], pkts_burst[i]);
+        break;
     }
   }
   return true;
@@ -2169,6 +2254,9 @@ bool run_to_completion(struct fwd_stream* fs) {
 static void run_pkt_fwd_on_lcore(struct fwd_lcore* fc,
 packet_fwd_t pkt_fwd) // packet_fwd_t pkt_fwd -- this is some function which runs
 {
+
+  // there is port and queue running on this port
+
   struct fwd_stream** fsm;
   uint64_t prev_tsc;
   streamid_t nb_fs;
@@ -2186,7 +2274,7 @@ packet_fwd_t pkt_fwd) // packet_fwd_t pkt_fwd -- this is some function which run
   fsm      = &fwd_streams[fc->stream_idx];
   nb_fs    = fc->stream_nb;
   prev_tsc = rte_rdtsc();
-  /* TEvery lcore here is resonsible for handling its own streams in the fstream_array that means
+  /* Every lcore here is resonsible for handling its own streams in the fstream_array that means
    if there are 2 ports ans 3 queues per port and 2 cores then there are total 6 streams then
    cores 1 will handle streams from 0-2 and core 2 will handle streams from 3-5
    At received side i do not need to take care of anything that the api is taking care of. I only
@@ -2373,7 +2461,6 @@ void start_packet_forwarding(int with_tx_first) {
     return;
   }
 
-
   fwd_config_setup();
 
   pkt_fwd_config_display(&cur_fwd_config);
@@ -2497,7 +2584,7 @@ int port_is_started(portid_t port_id) {
 static int setup_hairpin_queues(portid_t pi, portid_t p_pi, uint16_t cnt_pi) {
   queueid_t qi;
   struct rte_eth_hairpin_conf hairpin_conf = {
-    .peer_count = 1,
+  .peer_count = 1,
   };
   int i;
   int diag;
@@ -2551,7 +2638,7 @@ static int setup_hairpin_queues(portid_t pi, portid_t p_pi, uint16_t cnt_pi) {
     hairpin_conf.force_memory             = !!tx_force_memory;
     hairpin_conf.use_locked_device_memory = !!tx_locked_memory;
     hairpin_conf.use_rte_memory           = !!tx_rte_memory;
-    diag = rte_eth_tx_hairpin_queue_setup(pi, qi, nb_txd, &hairpin_conf);
+    diag                                  = rte_eth_tx_hairpin_queue_setup(pi, qi, nb_txd, &hairpin_conf);
     i++;
     if (diag == 0)
       continue;
@@ -2574,7 +2661,7 @@ static int setup_hairpin_queues(portid_t pi, portid_t p_pi, uint16_t cnt_pi) {
     hairpin_conf.force_memory             = !!rx_force_memory;
     hairpin_conf.use_locked_device_memory = !!rx_locked_memory;
     hairpin_conf.use_rte_memory           = !!rx_rte_memory;
-    diag = rte_eth_rx_hairpin_queue_setup(pi, qi, nb_rxd, &hairpin_conf);
+    diag                                  = rte_eth_rx_hairpin_queue_setup(pi, qi, nb_rxd, &hairpin_conf);
     i++;
     if (diag == 0)
       continue;
@@ -2630,9 +2717,9 @@ struct rte_mempool* mp) {
     rx_conf->rx_seg      = rx_useg;
     rx_conf->rx_mempools = NULL;
     rx_conf->rx_nmempool = 0;
-    ret = rte_eth_rx_queue_setup(port_id, rx_queue_id, nb_rx_desc, socket_id, rx_conf, NULL);
-    rx_conf->rx_seg  = NULL;
-    rx_conf->rx_nseg = 0;
+    ret                  = rte_eth_rx_queue_setup(port_id, rx_queue_id, nb_rx_desc, socket_id, rx_conf, NULL);
+    rx_conf->rx_seg      = NULL;
+    rx_conf->rx_nseg     = 0;
   } else if (multi_rx_mempool == 1) {
     /* multi-pool configuration */
     struct rte_eth_dev_info dev_info;
@@ -2656,7 +2743,7 @@ struct rte_mempool* mp) {
     rx_conf->rx_nmempool = mbuf_data_size_n;
     rx_conf->rx_seg      = NULL;
     rx_conf->rx_nseg     = 0;
-    ret = rte_eth_rx_queue_setup(port_id, rx_queue_id, nb_rx_desc, socket_id, rx_conf, NULL);
+    ret                  = rte_eth_rx_queue_setup(port_id, rx_queue_id, nb_rx_desc, socket_id, rx_conf, NULL);
     rx_conf->rx_mempools = NULL;
     rx_conf->rx_nmempool = 0;
   } else {
@@ -2665,7 +2752,7 @@ struct rte_mempool* mp) {
     rx_conf->rx_nseg     = 0;
     rx_conf->rx_mempools = NULL;
     rx_conf->rx_nmempool = 0;
-    ret = rte_eth_rx_queue_setup(port_id, rx_queue_id, nb_rx_desc, socket_id, rx_conf, mp);
+    ret                  = rte_eth_rx_queue_setup(port_id, rx_queue_id, nb_rx_desc, socket_id, rx_conf, mp);
   }
 
   ports[port_id].rxq[rx_queue_id].state =
@@ -3466,38 +3553,38 @@ static int eth_event_callback(portid_t port_id, enum rte_eth_event_type type, vo
   }
 
   switch (type) {
-  case RTE_ETH_EVENT_NEW:
-    ports[port_id].need_setup  = 1;
-    ports[port_id].port_status = RTE_PORT_HANDLING;
-    break;
-  case RTE_ETH_EVENT_INTR_RMV:
-    if (port_id_is_invalid(port_id, DISABLED_WARN))
+    case RTE_ETH_EVENT_NEW:
+      ports[port_id].need_setup  = 1;
+      ports[port_id].port_status = RTE_PORT_HANDLING;
       break;
-    if (rte_eal_alarm_set(100000, rmv_port_callback, (void*)(intptr_t)port_id))
-      fprintf(stderr, "Could not set up deferred device removal\n");
-    break;
-  case RTE_ETH_EVENT_DESTROY:
-    ports[port_id].port_status = RTE_PORT_CLOSED;
-    printf("Port %u is closed\n", port_id);
-    break;
-  case RTE_ETH_EVENT_RX_AVAIL_THRESH: {
-    uint16_t rxq_id;
-    int ret;
-
-    /* avail_thresh query API rewinds rxq_id, no need to check max RxQ num */
-    for (rxq_id = 0;; rxq_id++) {
-      ret = rte_eth_rx_avail_thresh_query(port_id, &rxq_id, NULL);
-      if (ret <= 0)
+    case RTE_ETH_EVENT_INTR_RMV:
+      if (port_id_is_invalid(port_id, DISABLED_WARN))
         break;
-      printf("Received avail_thresh event, port: %u, rxq_id: %u\n", port_id, rxq_id);
+      if (rte_eal_alarm_set(100000, rmv_port_callback, (void*)(intptr_t)port_id))
+        fprintf(stderr, "Could not set up deferred device removal\n");
+      break;
+    case RTE_ETH_EVENT_DESTROY:
+      ports[port_id].port_status = RTE_PORT_CLOSED;
+      printf("Port %u is closed\n", port_id);
+      break;
+    case RTE_ETH_EVENT_RX_AVAIL_THRESH: {
+      uint16_t rxq_id;
+      int ret;
 
-      // #ifdef RTE_NET_MLX5
-      // 			mlx5_test_avail_thresh_event_handler(port_id, rxq_id);
-      // #endif
+      /* avail_thresh query API rewinds rxq_id, no need to check max RxQ num */
+      for (rxq_id = 0;; rxq_id++) {
+        ret = rte_eth_rx_avail_thresh_query(port_id, &rxq_id, NULL);
+        if (ret <= 0)
+          break;
+        printf("Received avail_thresh event, port: %u, rxq_id: %u\n", port_id, rxq_id);
+
+        // #ifdef RTE_NET_MLX5
+        // 			mlx5_test_avail_thresh_event_handler(port_id, rxq_id);
+        // #endif
+      }
+      break;
     }
-    break;
-  }
-  default: break;
+    default: break;
   }
   return 0;
 }
@@ -3551,32 +3638,32 @@ static void dev_event_callback(const char* device_name, enum rte_dev_event_type 
   }
 
   switch (type) {
-  case RTE_DEV_EVENT_REMOVE:
-    RTE_LOG(DEBUG, EAL, "The device: %s has been removed!\n", device_name);
-    ret = rte_eth_dev_get_port_by_name(device_name, &port_id);
-    if (ret) {
-      RTE_LOG(ERR, EAL, "can not get port by device %s!\n", device_name);
-      return;
-    }
-    /*
-     * Because the user's callback is invoked in eal interrupt
-     * callback, the interrupt callback need to be finished before
-     * it can be unregistered when detaching device. So finish
-     * callback soon and use a deferred removal to detach device
-     * is need. It is a workaround, once the device detaching be
-     * moved into the eal in the future, the deferred removal could
-     * be deleted.
-     */
-    if (rte_eal_alarm_set(100000, rmv_port_callback, (void*)(intptr_t)port_id))
-      RTE_LOG(ERR, EAL, "Could not set up deferred device removal\n");
-    break;
-  case RTE_DEV_EVENT_ADD:
-    RTE_LOG(ERR, EAL, "The device: %s has been added!\n", device_name);
-    /* TODO: After finish kernel driver binding,
-     * begin to attach port.
-     */
-    break;
-  default: break;
+    case RTE_DEV_EVENT_REMOVE:
+      RTE_LOG(DEBUG, EAL, "The device: %s has been removed!\n", device_name);
+      ret = rte_eth_dev_get_port_by_name(device_name, &port_id);
+      if (ret) {
+        RTE_LOG(ERR, EAL, "can not get port by device %s!\n", device_name);
+        return;
+      }
+      /*
+       * Because the user's callback is invoked in eal interrupt
+       * callback, the interrupt callback need to be finished before
+       * it can be unregistered when detaching device. So finish
+       * callback soon and use a deferred removal to detach device
+       * is need. It is a workaround, once the device detaching be
+       * moved into the eal in the future, the deferred removal could
+       * be deleted.
+       */
+      if (rte_eal_alarm_set(100000, rmv_port_callback, (void*)(intptr_t)port_id))
+        RTE_LOG(ERR, EAL, "Could not set up deferred device removal\n");
+      break;
+    case RTE_DEV_EVENT_ADD:
+      RTE_LOG(ERR, EAL, "The device: %s has been added!\n", device_name);
+      /* TODO: After finish kernel driver binding,
+       * begin to attach port.
+       */
+      break;
+    default: break;
   }
 }
 
@@ -3729,8 +3816,8 @@ void init_port_config(void) {
 }
 
 
-const uint16_t vlan_tags[] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19,
-  20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31 };
+const uint16_t vlan_tags[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19,
+20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31};
 
 
 static void init_port(void) {
@@ -3754,8 +3841,8 @@ static void init_port(void) {
 
 static void print_stats(void) {
   uint8_t i;
-  const char clr[]      = { 27, '[', '2', 'J', '\0' };
-  const char top_left[] = { 27, '[', '1', ';', '1', 'H', '\0' };
+  const char clr[]      = {27, '[', '2', 'J', '\0'};
+  const char top_left[] = {27, '[', '1', ';', '1', 'H', '\0'};
 
   /* Clear screen and move to top left */
   printf("%s%s", clr, top_left);
@@ -3835,7 +3922,7 @@ string count_args(Json::Value config) {
   str += "--rxq=" + to_string(num_cores) + " ";
   str += "--txq=" + to_string(num_cores) + " ";
 
-
+  cout << str << endl;
   return str;
 }
 
@@ -3872,10 +3959,10 @@ void* DPDKCallBackWrapper::TrimPacket(void* buff, uint16_t offset) {
 
 
 int DataPlaneManager::start_dpdk_datapath() {
-  dpdk_dataplane_manager = this;
-  dpdk_callback_wrapper  = new DPDKCallBackWrapper();
-  string args            = count_args(datapath_configuration);
-  int argc               = 0;
+  ddm         = this;
+  dcw         = new DPDKCallBackWrapper();
+  string args = count_args(datapath_configuration);
+  int argc    = 0;
   std::istringstream iss(args);
   std::string token;
   while (iss >> token) {
@@ -3925,8 +4012,14 @@ int DataPlaneManager::start_dpdk_datapath() {
       rte_exit(EXIT_FAILURE, "Logical port with address %s was not found\n", it.key().asCString());
     };
     lports[lport_ind++] = port_id;
+    ether_addr port_mac;
+    rte_eth_macaddr_get(port_id, (rte_ether_addr*)&port_mac);
+    dpdk_port_mac.push_back(port_mac);
     it++;
   }
+
+
+  lport_mac = dpdk_port_mac;
 
   set_def_fwd_config();
   if (nb_lcores == 0)
@@ -4000,12 +4093,15 @@ int DataPlaneManager::start_dpdk_datapath() {
   if (record_core_cycles)
     rte_lcore_register_usage_cb(lcore_usage_callback);
 
-  thread tap_handler_thread(tap_handler_dpdk);
+  thread tap_handler_thread;
+  if (create_tap) {
+    tap_handler_thread = thread(tap_handler_dpdk);
+  }
   vector<int> workers_cores;
   vector<thread> workers;
 
-  if (dpdk_dataplane_manager->get_model() == MODEL_VALUE_MASTER_WORKER) {
-    Value workers_config   = dpdk_dataplane_manager->get_worker_configuration();
+  if (ddm->get_model() == MODEL_VALUE_MASTER_WORKER) {
+    Value workers_config   = ddm->get_worker_configuration();
     unsigned int ring_size = workers_config["worker_ring_size"].asInt64();
     for (int i = 0; i < nb_fwd_streams; i++) {
       worker_rx_rings_dpdk[i] = cne_ring_create("worker_rx_ring", sizeof(void*), ring_size, 0);
@@ -4044,7 +4140,7 @@ int DataPlaneManager::start_dpdk_datapath() {
     /* Convert to number of cycles */
     timer_period = stats_period * rte_get_timer_hz();
 
-    while (dpdk_dataplane_manager->is_running()) {
+    while (ddm->is_running()) {
       cur_time = rte_get_timer_cycles();
       diff_time += cur_time - prev_time;
 
@@ -4061,7 +4157,8 @@ int DataPlaneManager::start_dpdk_datapath() {
     char c;
 
     printf("Press enter to exit\n");
-    while (dpdk_dataplane_manager->is_running()) {
+    STARTED = 1;
+    while (ddm->is_running()) {
       /* end-of-file or any character exits loop */
       if (read(0, &c, 1) >= 0)
         break;

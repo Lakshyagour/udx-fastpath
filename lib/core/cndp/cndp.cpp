@@ -310,7 +310,7 @@ static int create_per_thread_txbuff(jcfg_thd_t* thd, struct fwd_info* fwd) {
   return 0;
 }
 
-int send_single_packet(char* buffer, int read_len, int lpid) {
+int send_single_packet_cndp(char* buffer, int read_len, int lpid) {
 
   struct thread_func_arg_t* func_arg = (struct thread_func_arg_t*)func_arg_for_thread_func[lpid];
   struct fwd_info* fwd               = func_arg->fwd;
@@ -368,7 +368,7 @@ void tap_handler_cndp() {
         memcpy(src_mac, cndp_lport_mac[lport].ether_addr_octet, ETH_ALEN);
         memcpy(arp_packet->arp_data.arp_sha.ether_addr_octet, src_mac, ETH_ALEN);
         memcpy(eth_hdr->h_source, src_mac, ETH_ALEN);
-        send_single_packet(buffer + PI_LEN, read_len - PI_LEN, lport);
+        send_single_packet_cndp(buffer + PI_LEN, read_len - PI_LEN, lport);
       }
       continue;
     }
@@ -377,7 +377,7 @@ void tap_handler_cndp() {
     if (verdict == DROP || verdict == KERNEL)
       continue;
 
-    send_single_packet(buffer + PI_LEN, read_len - PI_LEN, verdict);
+    send_single_packet_cndp(buffer + PI_LEN, read_len - PI_LEN, verdict);
   }
 }
 
